@@ -61,3 +61,6 @@ data/
 *.db
 *.db-shm
 *.db-wal
+
+# Editor settings (personal, per machine)
+.vscode/
