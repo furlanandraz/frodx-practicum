@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk.Worker">
+  <!--
+    A plain background worker: no web server, no endpoints. It is never exposed, and between
+    cycles there is nothing to serve. What it did is in the log; what needs a person is emailed.
+  -->
+
+  <ItemGroup>
+    <ProjectReference Include="..\OrderIngestion.Domain\OrderIngestion.Domain.csproj" />
+    <ProjectReference Include="..\OrderIngestion.Infrastructure\OrderIngestion.Infrastructure.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Azure.Monitor.OpenTelemetry.Exporter" Version="1.10.0" />
+    <PackageReference Include="Microsoft.Extensions.Hosting" Version="10.0.14" />
+    <PackageReference Include="Serilog.Extensions.Hosting" Version="10.0.0" />
+    <PackageReference Include="Serilog.Formatting.Compact" Version="3.0.0" />
+    <PackageReference Include="Serilog.Sinks.Console" Version="6.1.1" />
+    <PackageReference Include="Serilog.Sinks.File" Version="7.0.0" />
+  </ItemGroup>
+
+</Project>
