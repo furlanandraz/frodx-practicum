@@ -1,0 +1,13 @@
+<Solution>
+  <Folder Name="/simulate/">
+    <Project Path="simulate/OrderIngestion.MockApi/OrderIngestion.MockApi.csproj" />
+  </Folder>
+  <Folder Name="/src/">
+    <Project Path="src/OrderIngestion.Domain/OrderIngestion.Domain.csproj" />
+    <Project Path="src/OrderIngestion.Infrastructure/OrderIngestion.Infrastructure.csproj" />
+    <Project Path="src/OrderIngestion.Worker/OrderIngestion.Worker.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/OrderIngestion.Tests/OrderIngestion.Tests.csproj" />
+  </Folder>
+</Solution>
