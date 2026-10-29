@@ -1,0 +1,52 @@
+# The whole stack in containers: our stand-in for the production server.
+#
+# No settings live here. Each app's defaults are in its appsettings.json; .env (copy it from
+# .env.example) overrides them. This file only describes the containers and how they connect.
+#
+# Ports (same inside the container and on the host):
+#   8080  mock-api  - the simulated public HTTP API
+#   8025  mailpit   - email inbox (web), 1025 its SMTP port
+# The worker publishes nothing: it only calls out (API, SMTP) and writes to its volumes.
+#
+# On the server, compose.deploy.yml is layered on top to run the images CI built.
+
+name: order-ingestion
+
+services:
+  worker:
+    build:
+      context: .
+      dockerfile: src/OrderIngestion.Worker/Dockerfile
+    env_file: .env
+    depends_on:
+      mock-api:
+        condition: service_healthy
+      mailpit:
+        condition: service_healthy
+    volumes:
+      - worker-data:/app/data
+      - worker-logs:/app/logs
+    restart: unless-stopped
+
+  # Simulated upstream order API.
+  mock-api:
+    build:
+      context: .
+      dockerfile: simulate/OrderIngestion.MockApi/Dockerfile
+    env_file: .env
+    volumes:
+      # Edit scenario files on the host and the next request sees them; no rebuild.
+      - ./simulate/responses:/app/responses:ro
+    ports:
+      - "8080:8080"
+
+  # Fake SMTP server with a web inbox at http://localhost:8025. The worker's emails land here.
+  mailpit:
+    image: axllent/mailpit:v1.31.6
+    ports:
+      - "8025:8025"
+      - "1025:1025"
+
+volumes:
+  worker-data:
+  worker-logs:
