@@ -1,0 +1,29 @@
+[
+  {
+    "id": "ORD-1001",
+    "customerId": "CUST-001",
+    "status": "paid",
+    "currency": "EUR",
+    "totalAmount": 59.80,
+    "createdAt": "2026-10-28T09:15:00Z",
+    "channel": "web",
+    "lines": [
+      { "sku": "MUG-BLK", "quantity": 2, "unitPrice": 12.90 },
+      { "sku": "TEE-M-WHT", "quantity": 1, "unitPrice": 34.00 }
+    ]
+  },
+  {
+    "id": "ORD-1006",
+    "customerId": "CUST-005",
+    "status": "paid",
+    "currency": "EUR",
+    "totalAmount": 41.40,
+    "createdAt": "2026-10-29T11:30:00Z",
+    "channel": "mobile",
+    "discountCode": "AUTUMN10",
+    "shipping": { "method": "express", "cost": 4.90 },
+    "lines": [
+      { "sku": "TEE-L-BLK", "quantity": 1, "unitPrice": 36.50, "giftWrap": true }
+    ]
+  }
+]

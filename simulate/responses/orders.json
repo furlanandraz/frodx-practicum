@@ -1,0 +1,59 @@
+[
+  {
+    "id": "ORD-1001",
+    "customerId": "CUST-001",
+    "status": "paid",
+    "currency": "EUR",
+    "totalAmount": 59.80,
+    "createdAt": "2026-10-28T09:15:00Z",
+    "lines": [
+      { "sku": "MUG-BLK", "quantity": 2, "unitPrice": 12.90 },
+      { "sku": "TEE-M-WHT", "quantity": 1, "unitPrice": 34.00 }
+    ]
+  },
+  {
+    "id": "ORD-1002",
+    "customerId": "CUST-002",
+    "status": "pending",
+    "currency": "EUR",
+    "totalAmount": 24.50,
+    "createdAt": "2026-10-28T10:02:41Z",
+    "lines": [
+      { "sku": "BAG-CANVAS", "quantity": 1, "unitPrice": 24.50 }
+    ]
+  },
+  {
+    "id": "ORD-1003",
+    "customerId": "CUST-001",
+    "status": "shipped",
+    "currency": "EUR",
+    "totalAmount": 78.90,
+    "createdAt": "2026-10-28T13:47:09Z",
+    "lines": [
+      { "sku": "HOOD-L-GRY", "quantity": 1, "unitPrice": 59.00 },
+      { "sku": "CAP-BLK", "quantity": 1, "unitPrice": 19.90 }
+    ]
+  },
+  {
+    "id": "ORD-1004",
+    "customerId": "CUST-003",
+    "status": "delivered",
+    "currency": "EUR",
+    "totalAmount": 19.50,
+    "createdAt": "2026-10-27T16:20:00Z",
+    "lines": [
+      { "sku": "NOTE-A5", "quantity": 3, "unitPrice": 6.50 }
+    ]
+  },
+  {
+    "id": "ORD-1005",
+    "customerId": "CUST-004",
+    "status": "cancelled",
+    "currency": "EUR",
+    "totalAmount": 12.90,
+    "createdAt": "2026-10-29T07:05:33Z",
+    "lines": [
+      { "sku": "MUG-WHT", "quantity": 1, "unitPrice": 12.90 }
+    ]
+  }
+]
