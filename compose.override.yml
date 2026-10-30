@@ -1,0 +1,34 @@
+# Test-only services, for local runs and CI. Docker Compose loads this file automatically on top
+# of compose.yml whenever you run a plain `docker compose ...`. It is never copied to a server:
+# there the worker talks to the real order API and mail server.
+#
+# Ports (same inside the container and on the host):
+#   8080  mock-api  - the simulated order API
+#   8025  mailpit   - email inbox (web), 1025 its SMTP port
+
+services:
+  worker:
+    depends_on:
+      mock-api:
+        condition: service_healthy
+      mailpit:
+        condition: service_healthy
+
+  # Simulated upstream order API.
+  mock-api:
+    build:
+      context: .
+      dockerfile: simulate/OrderIngestion.MockApi/Dockerfile
+    env_file: .env
+    volumes:
+      # Edit scenario files on the host and the next request sees them; no rebuild.
+      - ./simulate/responses:/app/responses:ro
+    ports:
+      - "8080:8080"
+
+  # Fake SMTP server with a web inbox at http://localhost:8025. The worker's emails land here.
+  mailpit:
+    image: axllent/mailpit:v1.31.6
+    ports:
+      - "8025:8025"
+      - "1025:1025"

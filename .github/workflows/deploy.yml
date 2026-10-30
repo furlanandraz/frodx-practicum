@@ -33,21 +33,15 @@ jobs:
     with:
       ref: ${{ github.event.pull_request.merge_commit_sha || github.sha }}
 
-  build-images:
-    name: Build ${{ matrix.image }} image
+  # Only the worker is deployed. The mock API and Mailpit are test-only (compose.override.yml).
+  build-image:
+    name: Build worker image
     needs: test
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
       contents: read
       packages: write
-    strategy:
-      matrix:
-        include:
-          - image: order-ingestion-worker
-            dockerfile: src/OrderIngestion.Worker/Dockerfile
-          - image: order-ingestion-mock-api
-            dockerfile: simulate/OrderIngestion.MockApi/Dockerfile
     steps:
       - uses: actions/checkout@v7
         with:
@@ -67,15 +61,15 @@ jobs:
         uses: docker/build-push-action@v7
         with:
           context: .
-          file: ${{ matrix.dockerfile }}
-          tags: ${{ env.IMAGE_REGISTRY }}/${{ matrix.image }}:${{ env.IMAGE_TAG }}
+          file: src/OrderIngestion.Worker/Dockerfile
+          tags: ${{ env.IMAGE_REGISTRY }}/order-ingestion-worker:${{ env.IMAGE_TAG }}
           push: ${{ vars.DEPLOY_MODE == 'ssh' }}
-          cache-from: type=gha,scope=${{ matrix.image }}
-          cache-to: type=gha,mode=max,scope=${{ matrix.image }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
 
   deploy:
     name: Deploy to production
-    needs: build-images
+    needs: build-image
     runs-on: ubuntu-latest
     timeout-minutes: 10
     environment:
@@ -105,7 +99,7 @@ jobs:
             echo "  'IMAGE_REGISTRY=$IMAGE_REGISTRY IMAGE_TAG=$IMAGE_TAG APP_DIR=$dir bash -s' \\"
             echo "  < deploy/remote-deploy.sh"
             echo '```'
-            echo "Images: \`$IMAGE_REGISTRY/order-ingestion-{worker,mock-api}:$IMAGE_TAG\`"
+            echo "Image: \`$IMAGE_REGISTRY/order-ingestion-worker:$IMAGE_TAG\`"
           } >> "$GITHUB_STEP_SUMMARY"
           echo "Mock deploy of $IMAGE_TAG finished; see the job summary."
 

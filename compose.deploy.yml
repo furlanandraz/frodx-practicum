@@ -1,10 +1,8 @@
-# Layered on top of compose.yml on the server, to run the images CI built instead of building:
+# Layered on top of compose.yml on the server, to run the image CI built instead of building:
 #   docker compose -f compose.yml -f compose.deploy.yml up --detach --no-build
+# Naming the files explicitly also means compose.override.yml (mock API, Mailpit) is not loaded.
 # Both variables are required; compose refuses to start without them.
 
 services:
   worker:
     image: ${IMAGE_REGISTRY:?IMAGE_REGISTRY is required}/order-ingestion-worker:${IMAGE_TAG:?IMAGE_TAG is required}
-
-  mock-api:
-    image: ${IMAGE_REGISTRY:?IMAGE_REGISTRY is required}/order-ingestion-mock-api:${IMAGE_TAG:?IMAGE_TAG is required}
