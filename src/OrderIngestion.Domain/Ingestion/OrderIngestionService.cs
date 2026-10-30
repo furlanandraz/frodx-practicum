@@ -16,7 +16,8 @@ namespace OrderIngestion.Domain.Ingestion;
 /// </para>
 /// <para>
 /// If the process dies mid-cycle, the same applies: the position only moves in the transaction that
-/// stores the orders. The cycle leaves <see cref="RunStatus.Running"/> behind, which the next one reports.
+/// stores the orders. The cycle leaves <see cref="RunStatus.Running"/> behind, which the next one reports
+/// as "did not finish normally".
 /// </para>
 /// <para>
 /// Does no logging or I/O of its own: it talks to the outside only through ports
@@ -43,8 +44,9 @@ public sealed class OrderIngestionService(
         var cursor = await store.GetCursorAsync(cancellationToken);
         var since = ReadFrom(cursor.YoungestRecord);
 
-        // Still "running" from last time means that cycle never finished.
-        var interruptedRunStartedAt = cursor.LastRunStatus == RunStatus.Running ? cursor.LastRun : null;
+        // Still "running" from last time means that cycle never recorded a result. It can't still be
+        // working: cycles in one process never overlap, and only one worker uses this database.
+        var unfinishedRunStartedAt = cursor.LastRunStatus == RunStatus.Running ? cursor.LastRun : null;
 
         // Mark this cycle as started. The read position does not change here.
         await store.SaveCursorAsync(
@@ -73,7 +75,7 @@ public sealed class OrderIngestionService(
                 startedAt,
                 FinishedAt: timeProvider.GetUtcNow(),
                 since,
-                interruptedRunStartedAt,
+                unfinishedRunStartedAt,
                 Fetched: fetched.Orders.Count + fetched.Skipped.Count,
                 Inserted: inserted,
                 Duplicates: fetched.Orders.Count - inserted,

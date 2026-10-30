@@ -133,20 +133,20 @@ public sealed class OrderIngestionServiceTests
 
         var result = await Service.RunAsync(Guid.NewGuid(), CancellationToken.None);
 
-        Assert.Equal(crashedRunStartedAt, result.InterruptedRunStartedAt);
+        Assert.Equal(crashedRunStartedAt, result.UnfinishedRunStartedAt);
         Assert.Equal(Sample.At("2026-10-29T10:00:00Z"), Assert.Single(_source.SinceRequests)); // same window as before
         Assert.Equal(1, result.Inserted);
         Assert.Equal(RunStatus.Succeeded, _store.Cursor.LastRunStatus);
     }
 
     [Fact]
-    public async Task Normal_previous_cycle_is_not_reported_as_interrupted()
+    public async Task Normal_previous_cycle_is_not_reported_as_unfinished()
     {
         _store.Cursor = new IngestionCursor(Sample.At("2026-10-29T11:45:00Z"), RunStatus.Succeeded, null);
 
         var result = await Service.RunAsync(Guid.NewGuid(), CancellationToken.None);
 
-        Assert.Null(result.InterruptedRunStartedAt);
+        Assert.Null(result.UnfinishedRunStartedAt);
     }
 
     [Theory]
