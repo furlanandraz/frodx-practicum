@@ -20,7 +20,7 @@ Everything runs locally in Docker: a simulated upstream API, the worker, and a f
 
 ## How a cycle works
 
-1. On startup, and then every 15 minutes, the worker runs one cycle. A cycle never starts while the previous one is still running.
+1. On startup, and then every 15 minutes, the worker runs one cycle. A cycle never starts while the previous one is still running. If a cycle takes longer than the interval (a lot of data), the ticks it missed are skipped, one catch-up cycle starts right after it, and a warning says how long it took.
 2. It reads the cursor from the database and marks the cycle as `running`.
 3. It calls the API once, for orders created since the newest order it already has (minus a 5-minute overlap).
 4. **404 or 401:** log, email, return early.
@@ -147,9 +147,11 @@ SQLite has no real TIMESTAMP or JSON types: it stores both as text. Timestamps a
 | Finished | Orders + new position | Continues after them |
 | Any failure: 404, 401, schema drift, timeout, ... | Status `failed`, position unchanged | Fetches the same window again |
 | Database error while saving | Transaction rolled back: no orders, position unchanged | Fetches the same window again |
-| Process killed, container stopped, or server restarted mid-cycle | Status still `running`, position unchanged | Fetches the same window again and logs "previous run was interrupted" |
+| Process killed, container stopped, or server restarted mid-cycle | Status still `running`, position unchanged | Fetches the same window again and logs "previous run did not finish normally" |
 
 So no order can be skipped, and a crash loses only the cycle's work, never data: the orders are still upstream and get fetched again.
+
+**A leftover `running` never means "still working".** A cycle only reads the status when it starts. Cycles in one process never overlap, and only one worker uses the database (SQLite), so a `running` found at that moment always belongs to a cycle that is gone. Either its process stopped, or it ended but couldn't record `failed` because the database was unreachable at that moment. A slow cycle with a lot of data is a different case: it simply delays the next one.
 
 **After a restart it doesn't wait.** The worker runs a cycle immediately on startup, reading the position from the database rather than from memory, then continues every 15 minutes.
 
@@ -217,9 +219,11 @@ Every cycle writes one line when it starts and one with its result:
 [17:13:36 info ] Ingestion run 7120cf1a-… started
 [17:13:36 info ] Ingestion run 7120cf1a-… completed: fetched 5 since the beginning, inserted 5, duplicates 0, skipped 0 in 104 ms
 [17:20:41 warn ] Skipped order #1 ORD-1012: customerId is null
-[17:28:36 error] Ingestion run 2b9e41c0-… failed (schema drift, nothing stored): Order #1 (ORD-1008): JSON deserialization for type 'OrderDto' was missing required properties including: 'totalAmount'.
-[17:43:36 error] Ingestion run 8d03aa17-… failed (404): Order API returned 404 Not Found for /orders?since=…
-[17:58:36 error] Ingestion run 5e7a10b2-… failed (the next cycle tries again): Order API returned 503 Service Unavailable for /orders?since=…
+[17:28:36 error] Ingestion run 2b9e41c0-… failed (schema drift, nothing stored) after 98 ms: Order #1 (ORD-1008): JSON deserialization for type 'OrderDto' was missing required properties including: 'totalAmount'.
+[17:43:36 error] Ingestion run 8d03aa17-… failed (404) after 41 ms: Order API returned 404 Not Found for /orders?since=…
+[17:58:36 error] Ingestion run 5e7a10b2-… failed (the next cycle tries again) after 37 ms: Order API returned 503 Service Unavailable for /orders?since=…
+[18:14:13 warn ] Ingestion run 046f7643-… took 00:16:10, longer than the 00:15:00 interval: the ticks it missed are skipped and the next cycle starts right away
+[18:30:02 warn ] Previous run (started 2026-10-30T18:14:21…) did not finish normally: its process stopped, or it could not record its result. Nothing from it was saved, so this run fetched its window again
 ```
 
 Expected failures get one clear line; unexpected ones include the stack trace. The JSON file (`logs/worker-YYYYMMDD.json`, kept 14 days) has the same events with every value as a separate field, including `RunId` and `level`.
@@ -274,7 +278,7 @@ The workflow then pushes the image to GHCR, copies `compose.yml` plus [`compose.
 - **The worker knows nothing about tests.** It only ever sends `since`. Tests choose a scenario on the mock itself (`PUT /_mock/settings`), so no test parameter or test mode exists in production code.
 - **Email only when a person must act:** 404 (their side), 401 (our credentials), schema drift (our model). A skipped order is only logged. [`AlertRules.cs`](src/OrderIngestion.Domain/Alerts/AlertRules.cs) holds that decision in one tested place.
 - **Standard .NET host, three projects.** The task asks for separated components, and separate projects let the compiler enforce the dependency direction. The host provides config with env overrides, dependency injection, logging and clean shutdown, which would otherwise be hand-written.
-- **A long-running worker instead of cron.** It runs once on startup and then on a timer, and cycles never overlap.
+- **A long-running worker instead of cron.** It runs once on startup and then on a timer, and cycles never overlap. A cycle that outlasts the interval delays the next one rather than running alongside it, because two cycles would compete for the one cursor.
 - **Dapper and plain SQL instead of an ORM.** Every query is visible in [`SqliteIngestionStore.cs`](src/OrderIngestion.Infrastructure/Persistence/SqliteIngestionStore.cs), and there is no migration tooling to learn. Trade-off: moving to SQL Server means porting a handful of statements (`ON CONFLICT` becomes `MERGE`).
 - **The dedupe key is a hash of identity.** Order ID + customer ID, length-prefixed so `("AB","C")` and `("A","BC")` differ, then SHA-256. That gives one fixed-length indexed column (`CHAR(64)`), while `id` stays a plain integer primary key. The unique index is the guarantee; the in-memory de-duplication only handles repeats within one response.
 - **A cursor with overlap.** Fetches stay incremental, the overlap tolerates late orders, and the hash makes re-reads harmless.
