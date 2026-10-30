@@ -5,6 +5,10 @@
 # The worker exposes nothing, so the checks read its log and the Mailpit inbox. The mock's
 # behaviour is changed through its control endpoint and reset at the end.
 set -euo pipefail
+#
+# Note on searching output: never `command | grep -q`. grep -q stops reading at the first match,
+# the command still writing gets killed by a broken pipe (on Linux), and pipefail then reports the
+# whole check as failed although the line was found. Plain `grep ... > /dev/null` reads everything.
 
 MOCK_URL="${MOCK_URL:-http://localhost:8080}"
 MAILPIT_URL="${MAILPIT_URL:-http://localhost:8025}"
@@ -15,11 +19,26 @@ fail() { echo "FAIL  $*" >&2; exit 1; }
 
 worker_log() { docker compose logs worker 2>/dev/null; }
 
+# True when the worker's log contains the text $1.
+worker_log_has() { worker_log | grep -F -- "$1" > /dev/null; }
+
 # Number of finished cycles (completed or failed) in the worker's log so far.
 finished_runs() { worker_log | grep -cE "Ingestion run [0-9a-f-]+ (completed|failed)" || true; }
 
-# Number of /orders requests the mock API has received so far.
-mock_requests() { docker compose logs mock-api 2>/dev/null | grep -c "GET /orders" || true; }
+# Number of /orders requests the mock API has received for scenario $1 so far.
+mock_requests_for() { docker compose logs mock-api 2>/dev/null | grep -c "GET /orders (scenario $1," || true; }
+
+# True while the worker container is running.
+worker_running() { [ "$(docker inspect --format '{{.State.Running}}' "$(docker compose ps --all --quiet worker)")" = "true" ]; }
+
+# Fails with the worker's and the mock's recent log lines, so a CI failure shows what happened.
+fail_with_logs() {
+  {
+    echo "--- worker log (last 25 lines):"; worker_log | tail -25
+    echo "--- mock requests (last 10):"; docker compose logs mock-api 2>/dev/null | grep "GET /orders" | tail -10
+  } >&2
+  fail "$1"
+}
 
 # Waits until the worker has finished more cycles than $1, then prints the newest cycle's result line.
 wait_for_run_after() {
@@ -50,14 +69,14 @@ mock() {
 reset_mock() { curl --fail --silent --show-error --request DELETE "$MOCK_URL/_mock/settings" > /dev/null; }
 
 clear_inbox() { curl --fail --silent --show-error --request DELETE "$MAILPIT_URL/api/v1/messages" > /dev/null; }
-inbox_has() { sleep 2; curl --fail --silent --show-error "$MAILPIT_URL/api/v1/messages" | grep -qF "$1"; }
-inbox_empty() { sleep 2; curl --fail --silent --show-error "$MAILPIT_URL/api/v1/messages" | grep -q '"total":0'; }
+inbox_has() { sleep 2; curl --fail --silent --show-error "$MAILPIT_URL/api/v1/messages" | grep -F -- "$1" > /dev/null; }
+inbox_empty() { sleep 2; curl --fail --silent --show-error "$MAILPIT_URL/api/v1/messages" | grep -F '"total":0' > /dev/null; }
 
 # --- 0. Same starting point every time: default mock, worker with an empty database ---
 reset_mock
 docker compose rm --stop --force worker > /dev/null 2>&1
 docker volume rm order-ingestion_worker-data > /dev/null 2>&1 || true
-docker compose up --detach --wait worker > /dev/null 2>&1
+docker compose up --detach --wait --no-deps worker > /dev/null 2>&1
 
 # --- 1. The mock API -------------------------------------------------------
 curl --fail --silent --show-error "$MOCK_URL/orders" > /dev/null || fail "mock API $MOCK_URL/orders is not reachable"
@@ -80,21 +99,24 @@ pass "second cycle stored nothing new (cursor + dedupe survive a restart)"
 # worker is killed with SIGKILL (like a power cut) while it waits.
 mock '{"scenario":"orders-new","latencyMs":5000}'
 finished_before=$(finished_runs)
-requests_before=$(mock_requests)
+requests_before=$(mock_requests_for orders-new)
 docker compose restart worker > /dev/null 2>&1
-# Kill only once the worker's request has reached the mock. The cycle marks itself "running"
-# before it calls the API, so from that moment the marker is in the database, however slow the
-# machine. (A fixed sleep here was flaky on slower CI runners.)
-for _ in $(seq 1 "$RUN_TIMEOUT_SECONDS"); do [ "$(mock_requests)" -gt "$requests_before" ] && break; sleep 0.5; done
+# Kill only once this cycle's request has reached the mock. Only this cycle asks for orders-new,
+# and a cycle marks itself "running" before it calls the API, so from then on the marker is in
+# the database, however slow the machine.
+for _ in $(seq 1 "$RUN_TIMEOUT_SECONDS"); do [ "$(mock_requests_for orders-new)" -gt "$requests_before" ] && break; sleep 0.5; done
+[ "$(mock_requests_for orders-new)" -gt "$requests_before" ] || fail_with_logs "the worker never called the mock"
 docker compose kill worker > /dev/null 2>&1
-[ "$(finished_runs)" -eq "$finished_before" ] || fail "the cycle finished before the worker was killed"
+sleep 2
+worker_running && fail_with_logs "the worker is still running after the kill"
+[ "$(finished_runs)" -eq "$finished_before" ] || fail_with_logs "the cycle finished before the worker was killed"
 
 mock '{"latencyMs":0}'
 docker compose start worker > /dev/null 2>&1
 summary=$(wait_for_run_after "$finished_before")
-grep -q "inserted 1," <<<"$summary" || fail "cycle after the crash did not pick up the missed order: $summary"
-worker_log | grep -q "was interrupted before it finished" || fail "interrupted cycle was not reported"
-pass "worker killed mid-cycle; the next start detected it and stored the missed order"
+grep -q "inserted 1," <<<"$summary" || fail_with_logs "cycle after the crash did not pick up the missed order: $summary"
+worker_log_has "did not finish normally" || fail_with_logs "the unfinished cycle was not reported"
+pass "worker killed mid-cycle; the next start reported it and stored the missed order"
 
 # Emails go out for exactly three failures: 404, 401 and schema drift.
 
@@ -119,7 +141,7 @@ clear_inbox
 mock '{"scenario":"orders-invalid"}'
 summary=$(restart_worker_and_wait)
 grep -q "inserted 1, duplicates 0, skipped 2 " <<<"$summary" || fail "invalid values were not skipped one by one: $summary"
-worker_log | grep -q "Skipped order #1 ORD-1012: customerId is null" || fail "skipped order was not logged"
+worker_log_has "Skipped order #1 ORD-1012: customerId is null" || fail_with_logs "skipped order was not logged"
 inbox_empty || fail "skipped orders should not email"
 pass "invalid values: the valid order stored, the 2 others skipped and logged, no email"
 
