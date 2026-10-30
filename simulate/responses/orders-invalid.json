@@ -1,0 +1,33 @@
+[
+  {
+    "id": "ORD-1011",
+    "customerId": "CUST-010",
+    "status": "paid",
+    "currency": "EUR",
+    "totalAmount": 12.90,
+    "createdAt": "2026-10-29T12:30:00Z",
+    "lines": [
+      { "sku": "MUG-BLK", "quantity": 1, "unitPrice": 12.90 }
+    ]
+  },
+  {
+    "id": "ORD-1012",
+    "customerId": null,
+    "status": "paid",
+    "currency": "EUR",
+    "totalAmount": 24.50,
+    "createdAt": "2026-10-29T12:35:00Z",
+    "lines": [
+      { "sku": "BAG-CANVAS", "quantity": 1, "unitPrice": 24.50 }
+    ]
+  },
+  {
+    "id": "ORD-1013",
+    "customerId": "CUST-011",
+    "status": "pending",
+    "currency": "EUR",
+    "totalAmount": 6.50,
+    "createdAt": "2026-10-29T12:40:00Z",
+    "lines": [ null ]
+  }
+]

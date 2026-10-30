@@ -95,13 +95,21 @@ internal sealed class IngestionWorker(
                 interruptedAt.ToString("O"));
         }
 
+        // Skipped orders are logged, not emailed: a bad value in one order is a data problem, not an outage.
+        foreach (var skipped in result.Skipped)
+        {
+            logger.LogWarning(
+                "Skipped order #{Index} {ExternalId}: {Reason}", skipped.Index, skipped.ExternalId ?? "(no id)", skipped.Reason);
+        }
+
         logger.LogInformation(
-            "Ingestion run {RunId} completed: fetched {Fetched} since {Since:l}, inserted {Inserted}, duplicates {Duplicates} in {DurationMs:F0} ms",
+            "Ingestion run {RunId} completed: fetched {Fetched} since {Since:l}, inserted {Inserted}, duplicates {Duplicates}, skipped {Skipped} in {DurationMs:F0} ms",
             result.RunId,
             result.Fetched,
             result.Since?.ToString("O") ?? "the beginning",
             result.Inserted,
             result.Duplicates,
+            result.Skipped.Count,
             result.Duration.TotalMilliseconds);
     }
 }

@@ -114,7 +114,16 @@ grep -q "failed (schema drift, nothing stored).*ORD-1008" <<<"$summary" || fail 
 inbox_has "no longer matches our schema" || fail "no schema drift email"
 pass "broken records: schema drift naming the first bad order, nothing stored, emailed"
 
-# --- 7. 503: one attempt, logged, no email; the next cycle tries again ------
+# --- 7. Invalid values (nulls): only those orders skipped, logged, no email -
+clear_inbox
+mock '{"scenario":"orders-invalid"}'
+summary=$(restart_worker_and_wait)
+grep -q "inserted 1, duplicates 0, skipped 2 " <<<"$summary" || fail "invalid values were not skipped one by one: $summary"
+worker_log | grep -q "Skipped order #1 ORD-1012: customerId is null" || fail "skipped order was not logged"
+inbox_empty || fail "skipped orders should not email"
+pass "invalid values: the valid order stored, the 2 others skipped and logged, no email"
+
+# --- 8. 503: one attempt, logged, no email; the next cycle tries again ------
 clear_inbox
 mock '{"scenario":"orders","failureRate":1,"failureStatusCode":503}'
 summary=$(restart_worker_and_wait)
@@ -122,7 +131,7 @@ grep -q "failed (the next cycle tries again).*503" <<<"$summary" || fail "503 wa
 inbox_empty || fail "a 503 should not email"
 pass "503: logged, no email"
 
-# --- 8. 404: early return, emailed -----------------------------------------
+# --- 9. 404: early return, emailed -----------------------------------------
 clear_inbox
 mock '{"failureStatusCode":404}'
 summary=$(restart_worker_and_wait)
@@ -130,7 +139,7 @@ grep -q "failed (404)" <<<"$summary" || fail "404 was not reported: $summary"
 inbox_has "returned 404" || fail "no 404 email"
 pass "404: logged and emailed"
 
-# --- 9. 401: early return, emailed -----------------------------------------
+# --- 10. 401: early return, emailed -----------------------------------------
 clear_inbox
 mock '{"failureStatusCode":401}'
 summary=$(restart_worker_and_wait)

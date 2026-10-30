@@ -69,6 +69,33 @@ public sealed class OrderIngestionServiceTests
     }
 
     [Fact]
+    public async Task Skipped_orders_are_reported_and_the_rest_of_the_batch_is_stored()
+    {
+        _source.Next = () => [Sample.Order("ORD-1", createdAt: "2026-10-29T11:00:00Z")];
+        _source.Skipped = [new SkippedOrder(1, "ORD-2", "customerId is null")];
+
+        var result = await Service.RunAsync(Guid.NewGuid(), CancellationToken.None);
+
+        Assert.Equal(2, result.Fetched);
+        Assert.Equal(1, result.Inserted);
+        Assert.Equal(_source.Skipped, result.Skipped);
+        Assert.Equal(RunStatus.Succeeded, _store.Cursor.LastRunStatus);
+        Assert.Equal(Sample.At("2026-10-29T11:00:00Z"), _store.Cursor.YoungestRecord);
+    }
+
+    [Theory]
+    [InlineData("0001-01-01T00:00:00Z")] // DateTimeOffset.MinValue: subtracting the overlap would throw
+    [InlineData("2025-06-01T12:00:00Z")]
+    public async Task Cursor_never_reads_from_before_2026(string youngest)
+    {
+        _store.Cursor = _store.Cursor with { YoungestRecord = Sample.At(youngest) };
+
+        await Service.RunAsync(Guid.NewGuid(), CancellationToken.None);
+
+        Assert.Equal(Sample.At("2026-01-01T00:00:00Z") - Overlap, Assert.Single(_source.SinceRequests));
+    }
+
+    [Fact]
     public async Task Cursor_never_moves_backwards()
     {
         _store.Cursor = _store.Cursor with { YoungestRecord = Sample.At("2026-10-29T11:00:00Z") };
@@ -157,12 +184,14 @@ public sealed class OrderIngestionServiceTests
     {
         public Func<IReadOnlyList<Order>> Next { get; set; } = () => [];
 
+        public IReadOnlyList<SkippedOrder> Skipped { get; set; } = [];
+
         public List<DateTimeOffset?> SinceRequests { get; } = [];
 
-        public Task<IReadOnlyList<Order>> FetchOrdersAsync(DateTimeOffset? since, CancellationToken cancellationToken)
+        public Task<FetchedOrders> FetchOrdersAsync(DateTimeOffset? since, CancellationToken cancellationToken)
         {
             SinceRequests.Add(since);
-            return Task.FromResult(Next());
+            return Task.FromResult(new FetchedOrders(Next(), Skipped));
         }
     }
 

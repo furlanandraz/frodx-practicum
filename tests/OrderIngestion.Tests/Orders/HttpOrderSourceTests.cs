@@ -19,9 +19,9 @@ public sealed class HttpOrderSourceTests
     {
         var handler = new StubHandler(_ => Task.FromResult(OkResponse()));
 
-        var orders = await CreateSource(handler).FetchOrdersAsync(since: null, CancellationToken.None);
+        var result = await CreateSource(handler).FetchOrdersAsync(since: null, CancellationToken.None);
 
-        Assert.Single(orders);
+        Assert.Single(result.Orders);
     }
 
     [Theory]
@@ -96,13 +96,24 @@ public sealed class HttpOrderSourceTests
         Assert.Equal("?since=2026-10-29T10%3A00%3A00.0000000Z", handler.LastRequestUri?.Query);
     }
 
-    private static IOrderSource CreateSource(StubHandler handler)
+    [Fact]
+    public async Task Since_is_added_after_a_query_string_already_in_the_path()
+    {
+        var handler = new StubHandler(_ => Task.FromResult(OkResponse()));
+
+        await CreateSource(handler, ordersPath: "/orders?limit=100")
+            .FetchOrdersAsync(Sample.At("2026-10-29T10:00:00Z"), CancellationToken.None);
+
+        Assert.Equal("?limit=100&since=2026-10-29T10%3A00%3A00.0000000Z", handler.LastRequestUri?.Query);
+    }
+
+    private static IOrderSource CreateSource(StubHandler handler, string ordersPath = "/orders")
     {
         var configuration = new ConfigurationBuilder()
             .AddInMemoryCollection(new Dictionary<string, string?>
             {
                 ["OrderApi:BaseUrl"] = "http://upstream.test",
-                ["OrderApi:OrdersPath"] = "/orders",
+                ["OrderApi:OrdersPath"] = ordersPath,
                 ["OrderApi:TimeoutSeconds"] = "1",
             })
             .Build();

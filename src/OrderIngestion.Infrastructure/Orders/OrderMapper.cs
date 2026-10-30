@@ -2,16 +2,15 @@ using OrderIngestion.Domain.Orders;
 
 namespace OrderIngestion.Infrastructure.Orders;
 
-/// <summary>A record that parsed as JSON but breaks a rule (unknown status, empty lines, ...).</summary>
+/// <summary>An order whose shape is right but a value is not (a null, an unknown status, ...).</summary>
 internal sealed class InvalidOrderException(string message) : Exception(message);
 
 /// <summary>
-/// Translates the upstream DTO into the domain model and checks the rules the JSON shape
-/// alone can't express. This is the boundary where vendor data becomes trusted data.
+/// Turns an upstream DTO into the domain model, checking the values on the way. A failed check
+/// rejects only this order: it is skipped and logged, and the rest of the batch is stored.
 /// </summary>
 internal static class OrderMapper
 {
-    /// <param name="payload">The record's raw JSON, kept on the order so it can be stored as received.</param>
     public static Order ToDomain(this OrderDto dto, string payload)
     {
         Require(!string.IsNullOrWhiteSpace(dto.Id), "id is empty");

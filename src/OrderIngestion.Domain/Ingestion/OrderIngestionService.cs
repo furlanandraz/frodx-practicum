@@ -11,6 +11,10 @@ namespace OrderIngestion.Domain.Ingestion;
 /// "failed" status, and the read position stays where it was. The next cycle fetches the same window
 /// again; that is the retry. Stored orders are de-duplicated by hash, so fetching twice is harmless.
 /// <para>
+/// Orders skipped by validation are not a failure: the rest of the batch is stored, and the read
+/// position moves past them like past any other order.
+/// </para>
+/// <para>
 /// If the process dies mid-cycle, the same applies: the position only moves in the transaction that
 /// stores the orders. The cycle leaves <see cref="RunStatus.Running"/> behind, which the next one reports.
 /// </para>
@@ -26,13 +30,18 @@ public sealed class OrderIngestionService(
     IngestionSettings settings,
     TimeProvider timeProvider)
 {
+    // The cursor never reads from before this date. Orders may be older (the first cycle fetches
+    // everything), but the read position doesn't go back further. It also keeps "youngest − overlap"
+    // far away from DateTimeOffset.MinValue, where the subtraction would throw.
+    private static readonly DateTimeOffset CursorFloor = new(2026, 1, 1, 0, 0, 0, TimeSpan.Zero);
+
     public async Task<IngestionResult> RunAsync(Guid runId, CancellationToken cancellationToken)
     {
         // Also the batch timestamp: every row this cycle writes carries it.
         var startedAt = timeProvider.GetUtcNow();
 
         var cursor = await store.GetCursorAsync(cancellationToken);
-        var since = cursor.YoungestRecord - settings.CursorOverlap;
+        var since = ReadFrom(cursor.YoungestRecord);
 
         // Still "running" from last time means that cycle never finished.
         var interruptedRunStartedAt = cursor.LastRunStatus == RunStatus.Running ? cursor.LastRun : null;
@@ -44,11 +53,11 @@ public sealed class OrderIngestionService(
 
         try
         {
-            var orders = await source.FetchOrdersAsync(since, cancellationToken);
+            var fetched = await source.FetchOrdersAsync(since, cancellationToken);
 
             // The database's unique index is the real guarantee; this just avoids
             // sending an order twice when the response itself repeats it.
-            var unique = orders.DistinctBy(order => order.CanonicalHash).ToList();
+            var unique = fetched.Orders.DistinctBy(order => order.CanonicalHash).ToList();
 
             var nextCursor = cursor with
             {
@@ -65,9 +74,10 @@ public sealed class OrderIngestionService(
                 FinishedAt: timeProvider.GetUtcNow(),
                 since,
                 interruptedRunStartedAt,
-                Fetched: orders.Count,
+                Fetched: fetched.Orders.Count + fetched.Skipped.Count,
                 Inserted: inserted,
-                Duplicates: orders.Count - inserted);
+                Duplicates: fetched.Orders.Count - inserted,
+                fetched.Skipped);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
@@ -89,6 +99,19 @@ public sealed class OrderIngestionService(
             // Best effort: if the database is what failed, this fails too. The original
             // error is the one that matters and is rethrown by the caller.
         }
+    }
+
+    // Where to start reading: the newest stored order minus the overlap, but never before the floor.
+    // Null before anything is stored: the first cycle fetches everything.
+    private DateTimeOffset? ReadFrom(DateTimeOffset? youngest)
+    {
+        if (youngest is null)
+        {
+            return null;
+        }
+
+        var position = youngest < CursorFloor ? CursorFloor : youngest.Value;
+        return position - settings.CursorOverlap;
     }
 
     private static DateTimeOffset? Youngest(DateTimeOffset? current, IReadOnlyList<Order> orders)

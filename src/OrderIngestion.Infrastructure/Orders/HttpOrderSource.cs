@@ -11,7 +11,7 @@ namespace OrderIngestion.Infrastructure.Orders;
 /// </summary>
 internal sealed class HttpOrderSource(HttpClient httpClient, IOptions<OrderApiOptions> options) : IOrderSource
 {
-    public async Task<IReadOnlyList<Order>> FetchOrdersAsync(DateTimeOffset? since, CancellationToken cancellationToken)
+    public async Task<FetchedOrders> FetchOrdersAsync(DateTimeOffset? since, CancellationToken cancellationToken)
     {
         var path = BuildPath(options.Value.OrdersPath, since);
 
@@ -50,8 +50,17 @@ internal sealed class HttpOrderSource(HttpClient httpClient, IOptions<OrderApiOp
         }
     }
 
-    private static string BuildPath(string ordersPath, DateTimeOffset? since) =>
-        since is null
-            ? ordersPath
-            : $"{ordersPath}?since={Uri.EscapeDataString(since.Value.UtcDateTime.ToString("O", CultureInfo.InvariantCulture))}";
+    // Adds since to the path. If the configured path already has a query string
+    // (e.g. /orders?limit=100), since is appended with & so both parameters survive.
+    private static string BuildPath(string ordersPath, DateTimeOffset? since)
+    {
+        if (since is null)
+        {
+            return ordersPath;
+        }
+
+        var separator = ordersPath.Contains('?') ? '&' : '?';
+        var value = Uri.EscapeDataString(since.Value.UtcDateTime.ToString("O", CultureInfo.InvariantCulture));
+        return $"{ordersPath}{separator}since={value}";
+    }
 }

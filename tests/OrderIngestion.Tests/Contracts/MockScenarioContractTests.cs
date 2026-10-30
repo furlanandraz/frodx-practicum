@@ -15,21 +15,33 @@ public sealed class MockScenarioContractTests
     [InlineData("orders-new", 6)]
     public void Valid_scenarios_match_our_schema(string scenario, int expected)
     {
-        var orders = OrderPayloadReader.Read(Sample.Scenario(scenario));
+        var result = OrderPayloadReader.Read(Sample.Scenario(scenario));
 
-        Assert.Equal(expected, orders.Count);
-        Assert.Equal(expected, orders.Select(o => o.CanonicalHash).Distinct().Count());
+        Assert.Equal(expected, result.Orders.Count);
+        Assert.Empty(result.Skipped);
+        Assert.Equal(expected, result.Orders.Select(o => o.CanonicalHash).Distinct().Count());
     }
 
     [Fact]
     public void Default_scenario_totals_match_their_lines()
     {
-        foreach (var order in OrderPayloadReader.Read(Sample.Scenario("orders")))
+        foreach (var order in OrderPayloadReader.Read(Sample.Scenario("orders")).Orders)
         {
             var linesTotal = order.Lines.Sum(line => line.Quantity * line.UnitPrice);
             Assert.True(linesTotal == order.TotalAmount,
                 $"{order.ExternalId}: lines add up to {linesTotal}, total says {order.TotalAmount}");
         }
+    }
+
+    [Fact]
+    public void Invalid_values_skip_only_those_orders()
+    {
+        var result = OrderPayloadReader.Read(Sample.Scenario("orders-invalid"));
+
+        Assert.Equal(["ORD-1011"], result.Orders.Select(o => o.ExternalId));
+        Assert.Equal(
+            [new SkippedOrder(1, "ORD-1012", "customerId is null"), new SkippedOrder(2, "ORD-1013", "lines[0] is null")],
+            result.Skipped);
     }
 
     [Fact]
