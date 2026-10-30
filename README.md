@@ -24,9 +24,9 @@ Everything runs locally in Docker: a simulated upstream API, the worker, and a f
 2. It reads the cursor from the database and marks the cycle as `running`.
 3. It calls the API once, for orders created since the newest order it already has (minus a 5-minute overlap).
 4. **404 or 401:** log, email, return early.
-5. **The response doesn't match our schema:** log, email, return early. Nothing is written to the database.
+5. **The response's shape doesn't match our schema** (not a list; a field missing, added or of another type): log, email, return early. Nothing is written to the database.
 6. **Any other failure** (timeout, network error, 5xx, another 4xx): log, return early. The next cycle tries again from the same cursor.
-7. **Otherwise:** store the new orders and move the cursor in one transaction, then log the result.
+7. **Otherwise:** orders with an invalid value (a null, an unknown status, …) are skipped and logged. The other orders are stored and the cursor moves, in one transaction. Then the result is logged.
 
 ## Architecture
 
@@ -61,6 +61,8 @@ Requirements: Docker. The .NET 10 SDK is only needed to run outside Docker.
 cp .env.example .env          # required: tells the containers where the other containers are
 docker compose up --build
 ```
+
+Locally and in CI this runs three containers. [`compose.yml`](compose.yml) holds only the worker, the production shape. Docker Compose automatically adds [`compose.override.yml`](compose.override.yml) on top, with the test-only mock API and Mailpit. A server never gets that file: there the worker talks to the real order API and mail server.
 
 | URL | What |
 |---|---|
@@ -97,13 +99,15 @@ The SQLite file is never in the repository.
 |---|---|---|
 | 404 Not Found: the endpoint is wrong or gone (their side) | Logged, cycle ends | **yes** |
 | 401 Unauthorized: our credentials are refused, possibly stale (our side) | Logged, cycle ends | **yes** |
-| Schema drift: the response is not JSON or not a list, or a record has a field missing, added or of the wrong type, or an unknown value | Logged, cycle ends, nothing stored | **yes** |
+| Schema drift, the shape changed: the response is not JSON or not a list, or an order has a field missing, added or of another JSON type | Logged, cycle ends, nothing stored | **yes** |
+| Invalid value in an order: a null, an unknown status, an empty `lines` list, a quantity of 0 or less, a negative amount | Only that order is skipped and logged; the rest of the batch is stored | no |
 | Timeout (10 s), network error, 5xx, any other 4xx | Logged, cycle ends; the next cycle tries again | no |
 | Unexpected error (e.g. the database) | Logged with stack trace; the next cycle tries again | no |
 | Duplicate order | Skipped and counted | no |
 
 - **Every failure ends the cycle early.** The cursor stays where it was, so the next cycle fetches the same window, and nothing between the two is lost.
-- **The schema check is strict.** One record that doesn't match makes the whole response schema drift. A changed API is a reason to stop and look rather than store data we haven't checked. Meanwhile the cursor waits, and once `OrderDto` or their data is fixed, the next cycle picks up everything it missed.
+- **Shape and values are checked separately.** A changed shape means the API changed, which is a reason to stop and look rather than store data we haven't checked: the whole response is rejected and the cursor waits. A bad value is a problem with one order, so only that order is skipped.
+- **No nulls, for now.** We don't know yet which fields the API may leave empty, so a null anywhere skips the order. Nulls are checked in the raw JSON before parsing; the parser and `OrderDto` then only ever see complete orders.
 - **The worker never stops on a failure.** It logs it, sends the email if one is due, and runs again on the next tick.
 - **No email storms.** The same email goes out at most once per `Alerts:ThrottleMinutes` (60), so a 404 that lasts a day doesn't send one every 15 minutes.
 - **Mail server problems never stop the worker.** If sending fails, it is logged and the worker keeps running.
@@ -112,7 +116,8 @@ The SQLite file is never in the repository.
 Known limits:
 - The email throttle lives in memory, so a restart can resend an email once.
 - The dedupe key is identity only (ID + customer), so a status change on an order that is already stored is not picked up.
-- Because the schema check is strict, even a harmless new field from the API pauses ingestion until `OrderDto` is updated. That is deliberate.
+- Because the shape check is strict, even a harmless new field from the API pauses ingestion until `OrderDto` is updated. That is deliberate.
+- A skipped order is not fetched again once the cursor has moved past it. Its ID and reason are in the log.
 
 ## Data model
 
@@ -132,6 +137,8 @@ SQLite has no real TIMESTAMP or JSON types: it stores both as text. Timestamps a
 ### The cursor
 
 **Only new orders are fetched.** Each cycle reads `youngest_record` and asks the API for `?since=<youngest_record − 5 min>`. The API filters on its side, so stored orders aren't transferred again. The exception is the small overlap, which catches orders the upstream makes visible a little late; those few re-reads are dropped by the dedupe hash. `Ingestion__CursorOverlapMinutes=0` re-reads only the newest stored order.
+
+**The cursor never reads from before 2026-01-01.** Orders may be older: the first cycle fetches everything, and an old order is stored like any other. But when the newest stored order is older than that date, the next cycle still starts reading at 2026-01-01 (minus the overlap). This also keeps "newest date minus the overlap" away from the smallest date .NET can represent, where the subtraction would fail.
 
 **The read position moves only when orders are saved.** A cycle first marks itself `running`. The new `sync` rows and the new `youngest_record` are then written in one SQLite transaction:
 
@@ -185,6 +192,7 @@ curl -X DELETE localhost:8080/_mock/settings
 | A new order arriving | `{"scenario":"orders-new"}` |
 | Schema drift: fields added | `{"scenario":"orders-drift"}` |
 | Schema drift: broken records | `{"scenario":"orders-broken"}` |
+| Invalid values: 2 orders skipped, logged only | `{"scenario":"orders-invalid"}` |
 | 404, emailed | `{"failureRate":1,"failureStatusCode":404}` |
 | 401, emailed | `{"failureRate":1,"failureStatusCode":401}` |
 | 503, logged only | `{"failureRate":1,"failureStatusCode":503}` |
@@ -196,7 +204,8 @@ curl -X DELETE localhost:8080/_mock/settings
 | `orders` | 5 valid orders |
 | `orders-new` | The same 5 plus one newer valid order |
 | `orders-drift` | Orders with fields our schema doesn't have (`channel`, `discountCode`, `shipping`, `lines[].giftWrap`) |
-| `orders-broken` | One valid order, plus a missing total, an unknown status, and a number sent as a string |
+| `orders-broken` | One valid order, plus a missing total, an unknown status, and a number sent as a string (the missing total makes it schema drift) |
+| `orders-invalid` | One valid order, one with `customerId: null`, one with `lines: [null]` |
 
 The scenario folder is mounted into the container, so edits apply on the next request without a rebuild.
 
@@ -206,7 +215,8 @@ Every cycle writes one line when it starts and one with its result:
 
 ```
 [17:13:36 info ] Ingestion run 7120cf1a-… started
-[17:13:36 info ] Ingestion run 7120cf1a-… completed: fetched 5 since the beginning, inserted 5, duplicates 0 in 104 ms
+[17:13:36 info ] Ingestion run 7120cf1a-… completed: fetched 5 since the beginning, inserted 5, duplicates 0, skipped 0 in 104 ms
+[17:20:41 warn ] Skipped order #1 ORD-1012: customerId is null
 [17:28:36 error] Ingestion run 2b9e41c0-… failed (schema drift, nothing stored): Order #1 (ORD-1008): JSON deserialization for type 'OrderDto' was missing required properties including: 'totalAmount'.
 [17:43:36 error] Ingestion run 8d03aa17-… failed (404): Order API returned 404 Not Found for /orders?since=…
 [17:58:36 error] Ingestion run 5e7a10b2-… failed (the next cycle tries again): Order API returned 503 Service Unavailable for /orders?since=…
@@ -216,9 +226,9 @@ Expected failures get one clear line; unexpected ones include the stack trace. T
 
 ## Tests
 
-- **`dotnet test`** (64 tests):
+- **`dotnet test`** (80 tests):
   - Dedupe hash.
-  - The schema check: every kind of drift.
+  - The schema check: every kind of drift, and every invalid value that skips an order.
   - Contract tests against the mock's own scenario files.
   - HTTP failures sorted into the right kind, with one attempt each.
   - Cursor and cycle logic, including crash recovery and early returns.
@@ -229,6 +239,7 @@ Expected failures get one clear line; unexpected ones include the stack trace. T
   - A restart stores nothing twice.
   - A worker killed mid-cycle loses nothing.
   - Schema drift (added fields, broken records) stores nothing and emails.
+  - Invalid values skip only those orders, are logged, and don't email.
   - A 503 is only logged.
   - A 404 and a 401 email.
 
@@ -237,25 +248,31 @@ Expected failures get one clear line; unexpected ones include the stack trace. T
 | Workflow | Runs on | Jobs |
 |---|---|---|
 | [`test.yml`](.github/workflows/test.yml) | Every push, any branch | Build + unit tests → whole stack in Docker + smoke test |
-| [`deploy.yml`](.github/workflows/deploy.yml) | A PR merged into `main` | `test.yml` on the merge commit → build both images → deploy |
+| [`deploy.yml`](.github/workflows/deploy.yml) | A PR merged into `main` | `test.yml` on the merge commit → build the worker image → deploy |
 
 `deploy.yml` runs its own copy of the tests against the merge commit, so a deploy always depends on tests in the same run. A merge is also a push to `main`, so `test.yml` additionally runs on its own.
 
-**The deploy is mocked.** There is no server: images are built but not pushed, and the deploy job writes the commands it would run into the job summary. To make it real:
+**The deploy is mocked.** There is no server: the image is built but not pushed, and the deploy job writes the commands it would run into the job summary. Only the worker is deployed; the mock API and Mailpit exist for tests only. To make it real:
 
 1. Set the repository variable `DEPLOY_MODE=ssh`, plus `DEPLOY_HOST`, `DEPLOY_USER` and `DEPLOY_APP_DIR`.
 2. Add the secrets `SSH_PRIVATE_KEY` and `SSH_KNOWN_HOSTS` (the output of `ssh-keyscan <host>`).
-3. Put `.env` on the server in the app folder.
+3. Put `.env` on the server in the app folder, pointing at the real order API and mail server.
 
-The workflow then pushes images to GHCR, copies `compose.yml` plus [`compose.deploy.yml`](compose.deploy.yml) (which swaps local builds for the CI images), and runs [`deploy/remote-deploy.sh`](deploy/remote-deploy.sh) over SSH. That script fails the job if the new containers don't start.
+The workflow then pushes the image to GHCR, copies `compose.yml` plus [`compose.deploy.yml`](compose.deploy.yml) (which swaps the local build for the CI image), and runs [`deploy/remote-deploy.sh`](deploy/remote-deploy.sh) over SSH. That script fails the job if the new containers don't start.
 
 ## Design decisions
 
 - **A fetcher and store, nothing more.** The task is to fetch orders and store them once. There is no downstream system, so there is no dead-letter queue, no outbox, and no status API.
 - **The next cycle is the retry.** Every failure ends the cycle with the cursor unchanged, and the next cycle fetches the same window. The writes are duplicate-proof, so that is always safe. There are no retries within a cycle: the job runs every 15 minutes anyway, so a passing blip costs at most one interval, and a single attempt keeps the code and its log easy to follow.
 - **No endpoints, no web server.** The worker is never exposed and has nothing to serve between cycles, so it is a plain .NET host on the plain .NET runtime image. What it did is in the log; what needs a person is emailed.
-- **A strict schema.** `OrderDto`, read with .NET's built-in strict mode (`JsonSerializerOptions.Strict`: every field required, no unknown fields, no nulls), plus a few rules in [`OrderMapper.cs`](src/OrderIngestion.Infrastructure/Orders/OrderMapper.cs), defines what we accept. The default settings would not do: they silently leave missing fields empty and ignore unknown ones. Anything else is schema drift: logged, emailed, nothing stored. That catches an API change on day one.
-- **Email only when a person must act:** 404 (their side), 401 (our credentials), schema drift (our model). [`AlertRules.cs`](src/OrderIngestion.Domain/Alerts/AlertRules.cs) holds that decision in one tested place.
+- **A strict schema, checked in two steps.**
+  - **Nulls:** the raw JSON of each order is checked for nulls first. An order with one is skipped, so `OrderDto` itself has no nullable fields.
+  - **Shape:** `OrderDto` is read with .NET's built-in strict mode (`JsonSerializerOptions.Strict`: every field present, no unknown fields, the right JSON types). Anything else is schema drift: logged, emailed, nothing stored, which catches an API change on day one. The default settings would not do: they silently leave missing fields empty and ignore unknown ones.
+  - **Values:** checked in [`OrderMapper.cs`](src/OrderIngestion.Infrastructure/Orders/OrderMapper.cs): a known status, a positive quantity, and so on. A bad value skips only that order.
+- **A floor on the cursor, not on orders.** Old orders are valid data; only the read position is kept at or after 2026-01-01 (see [The cursor](#the-cursor)).
+- **The mock never leaves the test stack.** It and Mailpit live in `compose.override.yml`, which Docker Compose loads locally and in CI but which is never copied to a server. Only the worker image is built for deployment.
+- **The worker knows nothing about tests.** It only ever sends `since`. Tests choose a scenario on the mock itself (`PUT /_mock/settings`), so no test parameter or test mode exists in production code.
+- **Email only when a person must act:** 404 (their side), 401 (our credentials), schema drift (our model). A skipped order is only logged. [`AlertRules.cs`](src/OrderIngestion.Domain/Alerts/AlertRules.cs) holds that decision in one tested place.
 - **Standard .NET host, three projects.** The task asks for separated components, and separate projects let the compiler enforce the dependency direction. The host provides config with env overrides, dependency injection, logging and clean shutdown, which would otherwise be hand-written.
 - **A long-running worker instead of cron.** It runs once on startup and then on a timer, and cycles never overlap.
 - **Dapper and plain SQL instead of an ORM.** Every query is visible in [`SqliteIngestionStore.cs`](src/OrderIngestion.Infrastructure/Persistence/SqliteIngestionStore.cs), and there is no migration tooling to learn. Trade-off: moving to SQL Server means porting a handful of statements (`ON CONFLICT` becomes `MERGE`).
