@@ -18,8 +18,8 @@ worker_log() { docker compose logs worker 2>/dev/null; }
 # Number of finished cycles (completed or failed) in the worker's log so far.
 finished_runs() { worker_log | grep -cE "Ingestion run [0-9a-f-]+ (completed|failed)" || true; }
 
-# Number of cycles that started, finished or not.
-started_runs() { worker_log | grep -cE "Ingestion run [0-9a-f-]+ started" || true; }
+# Number of /orders requests the mock API has received so far.
+mock_requests() { docker compose logs mock-api 2>/dev/null | grep -c "GET /orders" || true; }
 
 # Waits until the worker has finished more cycles than $1, then prints the newest cycle's result line.
 wait_for_run_after() {
@@ -80,10 +80,12 @@ pass "second cycle stored nothing new (cursor + dedupe survive a restart)"
 # worker is killed with SIGKILL (like a power cut) while it waits.
 mock '{"scenario":"orders-new","latencyMs":5000}'
 finished_before=$(finished_runs)
-started_before=$(started_runs)
+requests_before=$(mock_requests)
 docker compose restart worker > /dev/null 2>&1
-for _ in $(seq 1 "$RUN_TIMEOUT_SECONDS"); do [ "$(started_runs)" -gt "$started_before" ] && break; sleep 1; done
-sleep 1
+# Kill only once the worker's request has reached the mock. The cycle marks itself "running"
+# before it calls the API, so from that moment the marker is in the database, however slow the
+# machine. (A fixed sleep here was flaky on slower CI runners.)
+for _ in $(seq 1 "$RUN_TIMEOUT_SECONDS"); do [ "$(mock_requests)" -gt "$requests_before" ] && break; sleep 0.5; done
 docker compose kill worker > /dev/null 2>&1
 [ "$(finished_runs)" -eq "$finished_before" ] || fail "the cycle finished before the worker was killed"
 

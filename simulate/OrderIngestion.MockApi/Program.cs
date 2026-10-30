@@ -29,6 +29,7 @@ app.Logger.LogInformation("Serving scenarios from {ResponsesPath} with {Settings
 app.MapGet("/orders", async (string? scenario, DateTimeOffset? since, ILogger<Program> logger, CancellationToken cancellationToken) =>
 {
     var settings = state.Current; // one consistent snapshot for the whole request
+    logger.LogInformation("GET /orders (scenario {Scenario}, since {Since})", scenario ?? settings.Scenario, since?.ToString("O") ?? "-");
 
     if (settings.LatencyMs > 0)
     {
