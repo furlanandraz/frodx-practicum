@@ -1,10 +1,9 @@
 name: Deploy
 
-# Runs when a PR is merged into main: tests the merge commit, builds the images, deploys.
+# Runs when a PR is merged into main: tests the merge commit, then deploys it.
 # A PR closed without merging also fires this event; the `if` on the first job skips it.
 #
-# MOCK BY DEFAULT: no registry push, no SSH. Images are built and the deploy job
-# writes the commands it would run to the job summary.
+# MOCK BY DEFAULT: no SSH. The deploy job writes the command it would run to the job summary.
 # Set the repository variable DEPLOY_MODE=ssh (plus the secrets below) to make it real.
 on:
   pull_request:
@@ -23,8 +22,6 @@ concurrency:
 env:
   # The merge commit on main. (For a merged PR, github.sha points at the PR's merge ref instead.)
   DEPLOY_SHA: ${{ github.event.pull_request.merge_commit_sha || github.sha }}
-  IMAGE_REGISTRY: ghcr.io/${{ github.repository_owner }}
-  IMAGE_TAG: ${{ github.event.pull_request.merge_commit_sha || github.sha }}
 
 jobs:
   test:
@@ -33,43 +30,11 @@ jobs:
     with:
       ref: ${{ github.event.pull_request.merge_commit_sha || github.sha }}
 
-  # Only the worker is deployed. The mock API and Mailpit are test-only (compose.override.yml).
-  build-image:
-    name: Build worker image
-    needs: test
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    permissions:
-      contents: read
-      packages: write
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          ref: ${{ env.DEPLOY_SHA }}
-
-      - uses: docker/setup-buildx-action@v4
-
-      - name: Log in to GHCR
-        if: vars.DEPLOY_MODE == 'ssh'
-        uses: docker/login-action@v4
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Build (and push when not mocked)
-        uses: docker/build-push-action@v7
-        with:
-          context: .
-          file: src/OrderIngestion.Worker/Dockerfile
-          tags: ${{ env.IMAGE_REGISTRY }}/order-ingestion-worker:${{ env.IMAGE_TAG }}
-          push: ${{ vars.DEPLOY_MODE == 'ssh' }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-
+  # The server checks out the tested commit and builds the worker from compose.yml alone,
+  # so the test-only services (compose.cicd.yml) are never deployed. See deploy/remote-deploy.sh.
   deploy:
     name: Deploy to production
-    needs: build-image
+    needs: test
     runs-on: ubuntu-latest
     timeout-minutes: 10
     environment:
@@ -94,14 +59,12 @@ jobs:
             echo "### Mock deploy"
             echo "No server was contacted. With \`DEPLOY_MODE=ssh\` this job would run:"
             echo '```bash'
-            echo "scp compose.yml compose.deploy.yml $target:$dir/"
             echo "ssh $target \\"
-            echo "  'IMAGE_REGISTRY=$IMAGE_REGISTRY IMAGE_TAG=$IMAGE_TAG APP_DIR=$dir bash -s' \\"
+            echo "  'APP_DIR=$dir DEPLOY_SHA=$DEPLOY_SHA bash -s' \\"
             echo "  < deploy/remote-deploy.sh"
             echo '```'
-            echo "Image: \`$IMAGE_REGISTRY/order-ingestion-worker:$IMAGE_TAG\`"
           } >> "$GITHUB_STEP_SUMMARY"
-          echo "Mock deploy of $IMAGE_TAG finished; see the job summary."
+          echo "Mock deploy of $DEPLOY_SHA finished; see the job summary."
 
       # Real path. Needs secrets SSH_PRIVATE_KEY and SSH_KNOWN_HOSTS (output of
       # `ssh-keyscan <host>`), and variables DEPLOY_HOST, DEPLOY_USER, DEPLOY_APP_DIR.
@@ -118,9 +81,8 @@ jobs:
           printf '%s\n' "$SSH_PRIVATE_KEY" > ~/.ssh/id_ed25519
           chmod 600 ~/.ssh/id_ed25519
           printf '%s\n' "$SSH_KNOWN_HOSTS" > ~/.ssh/known_hosts
-          scp compose.yml compose.deploy.yml "$DEPLOY_USER@$DEPLOY_HOST:$APP_DIR/"
           # The variables are meant to expand here, on the runner, and travel to the server.
           # shellcheck disable=SC2029
           ssh "$DEPLOY_USER@$DEPLOY_HOST" \
-            "IMAGE_REGISTRY=$IMAGE_REGISTRY IMAGE_TAG=$IMAGE_TAG APP_DIR=$APP_DIR bash -s" \
+            "APP_DIR=$APP_DIR DEPLOY_SHA=$DEPLOY_SHA bash -s" \
             < deploy/remote-deploy.sh

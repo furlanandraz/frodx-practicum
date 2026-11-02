@@ -4,15 +4,14 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using OrderIngestion.Domain.Orders;
 using OrderIngestion.Infrastructure;
-using OrderIngestion.Tests.TestSupport;
 
-namespace OrderIngestion.Tests.Orders;
+namespace OrderIngestion.Infrastructure.Tests.Orders;
 
 /// <summary>
 /// Runs the real HttpClient registration against a stub handler: one attempt per cycle,
 /// and every failure sorted into the right kind.
 /// </summary>
-public sealed class HttpOrderSourceTests
+public sealed class OrderApiClientTests
 {
     [Fact]
     public async Task Ok_response_returns_the_orders()
@@ -39,7 +38,7 @@ public sealed class HttpOrderSourceTests
             () => CreateSource(handler).FetchOrdersAsync(since: null, CancellationToken.None));
 
         Assert.Equal(expected, ex.Failure);
-        Assert.Equal(1, handler.Calls); // no retries within a cycle
+        Assert.Equal(1, handler.Calls);
     }
 
     [Fact]
@@ -57,7 +56,6 @@ public sealed class HttpOrderSourceTests
     [Fact]
     public async Task Timeout_is_other_and_not_retried()
     {
-        // Hangs past the 1 s timeout configured below.
         var handler = new StubHandler(async ct =>
         {
             await Task.Delay(TimeSpan.FromSeconds(10), ct);

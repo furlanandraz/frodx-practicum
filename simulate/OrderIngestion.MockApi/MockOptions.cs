@@ -1,6 +1,5 @@
 namespace OrderIngestion.MockApi;
 
-/// <summary>Bound from the "Mock" config section (appsettings.json, overridable by env: Mock__Scenario, ...).</summary>
 internal sealed class MockOptions
 {
     public const string SectionName = "Mock";
@@ -25,8 +24,8 @@ internal sealed class MockOptions
 /// </summary>
 /// <param name="Scenario">File in the responses folder, without ".json", served by GET /orders.</param>
 /// <param name="FailureRate">Share of requests that fail, from 0.0 (never) to 1.0 (always).</param>
-/// <param name="FailureStatusCode">Status of a simulated failure: 503 exercises retries, 404 the not-found alert.</param>
-/// <param name="LatencyMs">Delay added to every /orders response. Above the worker's attempt timeout, it forces retries.</param>
+/// <param name="FailureStatusCode">Status of a simulated failure, e.g. 503, 404 or 401.</param>
+/// <param name="LatencyMs">Delay added to every /orders response. Above the worker's timeout, the worker gives up.</param>
 internal sealed record MockSettings(string Scenario, double FailureRate, int FailureStatusCode, int LatencyMs)
 {
     public MockSettings With(MockSettingsPatch patch) => new(
@@ -44,7 +43,7 @@ internal sealed record MockSettings(string Scenario, double FailureRate, int Fai
         : LatencyMs is < 0 or > 600_000 ? "latencyMs must be between 0 and 600000"
         : null;
 
-    // Only letters, digits and '-', so a scenario name can never point outside the responses folder.
+    /// <summary>Only a-z, 0-9 and '-', so a scenario name can never point outside the responses folder.</summary>
     public static bool IsValidScenarioName(string name) =>
         name.Length > 0 && name.All(c => char.IsAsciiLetterLower(c) || char.IsAsciiDigit(c) || c == '-');
 }

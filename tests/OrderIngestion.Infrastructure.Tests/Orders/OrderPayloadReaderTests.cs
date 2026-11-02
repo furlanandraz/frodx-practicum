@@ -1,8 +1,7 @@
 using OrderIngestion.Domain.Orders;
 using OrderIngestion.Infrastructure.Orders;
-using OrderIngestion.Tests.TestSupport;
 
-namespace OrderIngestion.Tests.Orders;
+namespace OrderIngestion.Infrastructure.Tests.Orders;
 
 /// <summary>
 /// Shape problems make the whole response schema drift. Value problems skip only that order.
@@ -25,8 +24,6 @@ public sealed class OrderPayloadReaderTests
     {
         Assert.Empty(OrderPayloadReader.Read("[]").Orders);
     }
-
-    // --- Shape: schema drift ------------------------------------------------
 
     [Theory]
     [InlineData("not json")]
@@ -63,8 +60,6 @@ public sealed class OrderPayloadReaderTests
         AssertDrift($"[{Sample.OrderJson(id: "ORD-GOOD")}, {bad}]", "Order #1 (ORD-BAD)");
     }
 
-    // --- Values: that order is skipped, the rest kept -----------------------
-
     [Theory]
     [InlineData("\"customerId\": \"CUST-1\"", "\"customerId\": null", "customerId is null")]
     [InlineData("\"totalAmount\": 10.00", "\"totalAmount\": null", "totalAmount is null")]
@@ -89,14 +84,13 @@ public sealed class OrderPayloadReaderTests
     [Fact]
     public void Null_is_checked_before_the_shape()
     {
-        // An order with a null and an added field is skipped for the null, not treated as drift.
         var order = Sample.OrderJson().Replace("\"CUST-1\"", "null").Replace("\"currency\"", "\"channel\": \"web\", \"currency\"");
 
         AssertSkipped(order, "customerId is null");
     }
 
     [Theory]
-    [InlineData("3")]        // Enum.TryParse would accept this
+    [InlineData("3")]
     [InlineData("on_hold")]
     public void Unknown_status_skips_that_order(string status)
     {
@@ -108,7 +102,6 @@ public sealed class OrderPayloadReaderTests
     [InlineData("2025-06-01T12:00:00Z")]
     public void Old_orders_are_accepted(string createdAt)
     {
-        // The 2026 floor applies to the cursor, not to orders (see OrderIngestionService).
         var result = OrderPayloadReader.Read($"[{Sample.OrderJson().Replace("2026-10-29T10:00:00Z", createdAt)}]");
 
         Assert.Single(result.Orders);

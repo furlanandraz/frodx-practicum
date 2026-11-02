@@ -40,7 +40,7 @@ internal static class OrderMapper
         return new OrderLine(line.Sku, line.Quantity, line.UnitPrice);
     }
 
-    // Matches enum names only. Enum.TryParse would also accept numbers like "3".
+    /// <summary>Enum names only; Enum.TryParse would also accept numbers like "3".</summary>
     private static bool TryParseStatus(string value, out OrderStatus status)
     {
         foreach (var candidate in Enum.GetValues<OrderStatus>())

@@ -3,10 +3,8 @@ namespace OrderIngestion.Domain.Ingestion;
 public enum RunStatus
 {
     /// <summary>
-    /// Written when a run starts. Cycles in one process never overlap, so if the next run still
-    /// finds this, the previous one never recorded a result: its process stopped (crash, kill,
-    /// power loss), or the database couldn't be written at the end. Either way nothing it fetched
-    /// was saved.
+    /// Written when a run starts. If the next run still finds it, the previous one never recorded a
+    /// result (crash, kill, or the final write failed), and nothing it fetched was saved.
     /// </summary>
     Running,
     Succeeded,
@@ -21,6 +19,5 @@ public sealed record IngestionCursor(
     RunStatus? LastRunStatus,
     DateTimeOffset? YoungestRecord)
 {
-    /// <summary>Before the first run.</summary>
     public static IngestionCursor Empty { get; } = new(null, null, null);
 }

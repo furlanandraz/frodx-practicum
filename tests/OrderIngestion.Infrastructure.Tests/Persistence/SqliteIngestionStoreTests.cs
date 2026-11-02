@@ -4,9 +4,8 @@ using Microsoft.Extensions.Options;
 using OrderIngestion.Domain.Ingestion;
 using OrderIngestion.Domain.Orders;
 using OrderIngestion.Infrastructure.Persistence;
-using OrderIngestion.Tests.TestSupport;
 
-namespace OrderIngestion.Tests.Persistence;
+namespace OrderIngestion.Infrastructure.Tests.Persistence;
 
 /// <summary>Against a real SQLite file, so the SQL itself (unique index, ON CONFLICT, CHECKs) is tested.</summary>
 public sealed class SqliteIngestionStoreTests : IAsyncLifetime
@@ -27,7 +26,7 @@ public sealed class SqliteIngestionStoreTests : IAsyncLifetime
 
     public Task DisposeAsync()
     {
-        SqliteConnection.ClearAllPools(); // release the file so it can be deleted
+        SqliteConnection.ClearAllPools();
         foreach (var file in new[] { _filePath, $"{_filePath}-wal", $"{_filePath}-shm" })
         {
             File.Delete(file);
@@ -103,8 +102,6 @@ public sealed class SqliteIngestionStoreTests : IAsyncLifetime
     [Fact]
     public async Task Failure_halfway_through_a_save_leaves_nothing_behind()
     {
-        // The second order breaks the json_valid() check after the first one was already inserted
-        // inside the transaction: the same situation as the process dying mid-save.
         Order[] orders = [Sample.Order("ORD-1"), Sample.Order("ORD-2") with { Payload = "not json" }];
 
         await Assert.ThrowsAsync<SqliteException>(

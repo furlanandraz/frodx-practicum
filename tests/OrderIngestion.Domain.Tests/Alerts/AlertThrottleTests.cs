@@ -1,7 +1,7 @@
 using Microsoft.Extensions.Time.Testing;
 using OrderIngestion.Domain.Alerts;
 
-namespace OrderIngestion.Tests.Alerts;
+namespace OrderIngestion.Domain.Tests.Alerts;
 
 public sealed class AlertThrottleTests
 {
@@ -40,7 +40,6 @@ public sealed class AlertThrottleTests
     [Fact]
     public void Unsent_alert_is_not_throttled()
     {
-        // A failed send never calls MarkSent, so the next run tries to email again.
         var throttle = new AlertThrottle(_time, TimeSpan.FromMinutes(60));
         _ = throttle.IsThrottled("run-failed");
 

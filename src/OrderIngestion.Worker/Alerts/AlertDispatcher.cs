@@ -39,7 +39,6 @@ internal sealed class AlertDispatcher(
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            // The underlying problem is already logged; this only records that the email didn't go out.
             logger.LogError(ex, "Could not email alert {AlertKey}", alert.Key);
         }
     }

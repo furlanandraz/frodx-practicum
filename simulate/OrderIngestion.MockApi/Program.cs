@@ -1,9 +1,6 @@
 using System.Text.Json.Nodes;
 using OrderIngestion.MockApi;
 
-// Stand-in for the vendor's order API. Serves simulate/responses/*.json and can
-// misbehave on purpose (errors, latency) so the worker's error handling can be exercised.
-
 var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddHealthChecks();
 
@@ -23,12 +20,9 @@ var app = builder.Build();
 
 app.Logger.LogInformation("Serving scenarios from {ResponsesPath} with {Settings}", responsesPath, initial);
 
-// GET /orders                                  -> current scenario
-// GET /orders?scenario=orders-drift            -> responses/orders-drift.json
-// GET /orders?since=2026-10-29T00:00:00Z       -> only orders with createdAt >= since
 app.MapGet("/orders", async (string? scenario, DateTimeOffset? since, ILogger<Program> logger, CancellationToken cancellationToken) =>
 {
-    var settings = state.Current; // one consistent snapshot for the whole request
+    var settings = state.Current;
     logger.LogInformation("GET /orders (scenario {Scenario}, since {Since})", scenario ?? settings.Scenario, since?.ToString("O") ?? "-");
 
     if (settings.LatencyMs > 0)
@@ -54,15 +48,10 @@ app.MapGet("/orders", async (string? scenario, DateTimeOffset? since, ILogger<Pr
         return Results.NotFound($"Unknown scenario '{name}'.");
     }
 
-    // Read on every request so scenario files can be edited while the stack is running.
     var json = await File.ReadAllTextAsync(file, cancellationToken);
     return Results.Text(since is null ? json : FilterSince(json, since.Value), "application/json");
 });
 
-// Control endpoints: change what the mock does while it runs (the smoke test uses these).
-//   PUT    /_mock/settings  {"scenario":"orders-drift","failureRate":0.5}   fields left out stay as they are
-//   GET    /_mock/settings                                                  current settings
-//   DELETE /_mock/settings                                                  back to the configured settings
 app.MapGet("/_mock/settings", () => state.Current);
 
 app.MapPut("/_mock/settings", (MockSettingsPatch patch, ILogger<Program> logger) =>
@@ -89,8 +78,6 @@ app.MapHealthChecks("/health");
 
 app.Run();
 
-// Keeps records whose createdAt is >= since. Records without a readable createdAt are kept,
-// so broken scenarios stay broken.
 static string FilterSince(string json, DateTimeOffset since)
 {
     if (JsonNode.Parse(json) is not JsonArray orders)

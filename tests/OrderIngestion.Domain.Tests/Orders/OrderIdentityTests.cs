@@ -1,6 +1,6 @@
 using OrderIngestion.Domain.Orders;
 
-namespace OrderIngestion.Tests.Orders;
+namespace OrderIngestion.Domain.Tests.Orders;
 
 public sealed class OrderIdentityTests
 {
@@ -32,7 +32,6 @@ public sealed class OrderIdentityTests
     [Fact]
     public void Parts_cannot_bleed_into_each_other()
     {
-        // Naive concatenation would make both "ABC".
         Assert.NotEqual(
             OrderIdentity.CanonicalHash("AB", "C"),
             OrderIdentity.CanonicalHash("A", "BC"));

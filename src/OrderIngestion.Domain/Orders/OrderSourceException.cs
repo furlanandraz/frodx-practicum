@@ -10,8 +10,8 @@ public enum OrderSourceFailure
     Unauthorized,
 
     /// <summary>
-    /// The API answered, but the response doesn't match our predefined schema (not JSON, not a list,
-    /// a field missing, added or of the wrong type, an unknown value). Nothing from it is stored.
+    /// The response doesn't match our schema (not JSON, not a list, a field missing, added or of
+    /// the wrong type). Nothing from it is stored.
     /// </summary>
     SchemaDrift,
 

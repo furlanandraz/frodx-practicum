@@ -12,8 +12,7 @@ namespace OrderIngestion.Worker.Logging;
 /// </summary>
 internal static class LoggingSetup
 {
-    // {level} is our short label (info/warn/error) from ShortLevelEnricher, not Serilog's {Level}.
-    // ",-5" pads it so messages line up; ":l" prints it without quotes.
+    /// <summary>{level} is our short label from <see cref="ShortLevelEnricher"/>; ",-5" pads it, ":l" drops the quotes.</summary>
     private const string ConsoleTemplate = "[{Timestamp:HH:mm:ss} {level,-5:l}] {Message:lj}{NewLine}{Exception}";
 
     /// <summary>Console-only logger for errors that happen before configuration is loaded.</summary>
@@ -31,17 +30,13 @@ internal static class LoggingSetup
 
         return logger
             .MinimumLevel.Is(level)
-            // Framework noise (one line per HTTP request, HttpClient chatter) only from warn up;
-            // startup and shutdown lines stay visible.
             .MinimumLevel.Override("Microsoft", Max(level, LogEventLevel.Warning))
             .MinimumLevel.Override("Microsoft.Hosting.Lifetime", Max(level, LogEventLevel.Information))
             .MinimumLevel.Override("System.Net.Http.HttpClient", Max(level, LogEventLevel.Warning))
             .Enrich.FromLogContext()
             .Enrich.With<ShortLevelEnricher>()
             .Enrich.WithProperty("Application", "OrderIngestion.Worker")
-            // Human-readable, for `docker compose logs`.
             .WriteTo.Console(outputTemplate: ConsoleTemplate, formatProvider: CultureInfo.InvariantCulture)
-            // One JSON object per line, for searching (e.g. by RunId). A new file each day, two weeks kept.
             .WriteTo.File(
                 new RenderedCompactJsonFormatter(),
                 Path.Combine(directory, "worker-.json"),

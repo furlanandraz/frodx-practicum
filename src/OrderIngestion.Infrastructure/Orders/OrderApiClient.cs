@@ -9,7 +9,11 @@ namespace OrderIngestion.Infrastructure.Orders;
 /// Fetches orders from the upstream HTTP API: one attempt per cycle, no retries within it.
 /// A failed attempt is retried by the next cycle, which starts from the same cursor.
 /// </summary>
-internal sealed class HttpOrderSource(HttpClient httpClient, IOptions<OrderApiOptions> options) : IOrderSource
+/// <remarks>
+/// A timeout throws <see cref="TaskCanceledException"/> while our own token is not cancelled;
+/// that is how it is told apart from shutdown.
+/// </remarks>
+internal sealed class OrderApiClient(HttpClient httpClient, IOptions<OrderApiOptions> options) : IOrderSource
 {
     public async Task<FetchedOrders> FetchOrdersAsync(DateTimeOffset? since, CancellationToken cancellationToken)
     {
@@ -26,7 +30,6 @@ internal sealed class HttpOrderSource(HttpClient httpClient, IOptions<OrderApiOp
         }
         catch (TaskCanceledException ex) when (!cancellationToken.IsCancellationRequested)
         {
-            // HttpClient.Timeout elapsed (a real shutdown would have cancelled our own token instead).
             throw new OrderSourceException(OrderSourceFailure.Other, $"Order API did not answer within {httpClient.Timeout.TotalSeconds:F0} s ({path})", ex);
         }
 
@@ -50,8 +53,7 @@ internal sealed class HttpOrderSource(HttpClient httpClient, IOptions<OrderApiOp
         }
     }
 
-    // Adds since to the path. If the configured path already has a query string
-    // (e.g. /orders?limit=100), since is appended with & so both parameters survive.
+    /// <summary>Appends since with '?' or '&amp;', so a query string already in the configured path survives.</summary>
     private static string BuildPath(string ordersPath, DateTimeOffset? since)
     {
         if (since is null)

@@ -3,7 +3,6 @@ using MimeKit;
 
 namespace OrderIngestion.Infrastructure.Alerts;
 
-/// <summary>Bound from the "Alerts" config section.</summary>
 public sealed class AlertOptions
 {
     public const string SectionName = "Alerts";
