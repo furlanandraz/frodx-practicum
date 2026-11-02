@@ -1,6 +1,7 @@
-# Test-only services, for local runs and CI. Docker Compose loads this file automatically on top
-# of compose.yml whenever you run a plain `docker compose ...`. It is never copied to a server:
-# there the worker talks to the real order API and mail server.
+# Test-only services for local runs and CI: the mock order API and Mailpit. Always layered on
+# top of compose.yml, never used alone and never on a server (there the worker talks to the real
+# order API and mail server):
+#   docker compose -f compose.yml -f compose.cicd.yml up --build
 #
 # Ports (same inside the container and on the host):
 #   8080  mock-api  - the simulated order API

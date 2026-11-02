@@ -1,23 +1,31 @@
 #!/usr/bin/env bash
-# End-to-end checks against a running compose stack. Used by CI; works locally in Git Bash too:
-#   cp .env.example .env && docker compose up --detach --build --wait && bash scripts/smoke-test.sh
+# End-to-end checks against the running test stack. Used by CI; works locally in Git Bash too:
+#   cp .env.example .env
+#   docker compose -f compose.yml -f compose.cicd.yml up --detach --build --wait
+#   bash scripts/smoke-test.sh
 #
 # The worker exposes nothing, so the checks read its log and the Mailpit inbox. The mock's
 # behaviour is changed through its control endpoint and reset at the end.
-set -euo pipefail
 #
 # Note on searching output: never `command | grep -q`. grep -q stops reading at the first match,
 # the command still writing gets killed by a broken pipe (on Linux), and pipefail then reports the
 # whole check as failed although the line was found. Plain `grep ... > /dev/null` reads everything.
+set -euo pipefail
+
+# Run from the repository root, wherever the script is called from.
+cd "$(dirname "$0")/.."
 
 MOCK_URL="${MOCK_URL:-http://localhost:8080}"
 MAILPIT_URL="${MAILPIT_URL:-http://localhost:8025}"
 RUN_TIMEOUT_SECONDS="${RUN_TIMEOUT_SECONDS:-60}"
 
+# The test stack: the worker plus the test-only mock API and Mailpit.
+compose() { docker compose -f compose.yml -f compose.cicd.yml "$@"; }
+
 pass() { echo "ok    $*"; }
 fail() { echo "FAIL  $*" >&2; exit 1; }
 
-worker_log() { docker compose logs worker 2>/dev/null; }
+worker_log() { compose logs worker 2>/dev/null; }
 
 # True when the worker's log contains the text $1.
 worker_log_has() { worker_log | grep -F -- "$1" > /dev/null; }
@@ -26,16 +34,16 @@ worker_log_has() { worker_log | grep -F -- "$1" > /dev/null; }
 finished_runs() { worker_log | grep -cE "Ingestion run [0-9a-f-]+ (completed|failed)" || true; }
 
 # Number of /orders requests the mock API has received for scenario $1 so far.
-mock_requests_for() { docker compose logs mock-api 2>/dev/null | grep -c "GET /orders (scenario $1," || true; }
+mock_requests_for() { compose logs mock-api 2>/dev/null | grep -c "GET /orders (scenario $1," || true; }
 
 # True while the worker container is running.
-worker_running() { [ "$(docker inspect --format '{{.State.Running}}' "$(docker compose ps --all --quiet worker)")" = "true" ]; }
+worker_running() { [ "$(docker inspect --format '{{.State.Running}}' "$(compose ps --all --quiet worker)")" = "true" ]; }
 
 # Fails with the worker's and the mock's recent log lines, so a CI failure shows what happened.
 fail_with_logs() {
   {
     echo "--- worker log (last 25 lines):"; worker_log | tail -25
-    echo "--- mock requests (last 10):"; docker compose logs mock-api 2>/dev/null | grep "GET /orders" | tail -10
+    echo "--- mock requests (last 10):"; compose logs mock-api 2>/dev/null | grep "GET /orders" | tail -10
   } >&2
   fail "$1"
 }
@@ -57,7 +65,7 @@ wait_for_run_after() {
 restart_worker_and_wait() {
   local before
   before=$(finished_runs)
-  docker compose restart worker > /dev/null 2>&1
+  compose restart worker > /dev/null 2>&1
   wait_for_run_after "$before"
 }
 
@@ -74,9 +82,9 @@ inbox_empty() { sleep 2; curl --fail --silent --show-error "$MAILPIT_URL/api/v1/
 
 # --- 0. Same starting point every time: default mock, worker with an empty database ---
 reset_mock
-docker compose rm --stop --force worker > /dev/null 2>&1
+compose rm --stop --force worker > /dev/null 2>&1
 docker volume rm order-ingestion_worker-data > /dev/null 2>&1 || true
-docker compose up --detach --wait --no-deps worker > /dev/null 2>&1
+compose up --detach --wait --no-deps worker > /dev/null 2>&1
 
 # --- 1. The mock API -------------------------------------------------------
 curl --fail --silent --show-error "$MOCK_URL/orders" > /dev/null || fail "mock API $MOCK_URL/orders is not reachable"
@@ -100,19 +108,19 @@ pass "second cycle stored nothing new (cursor + dedupe survive a restart)"
 mock '{"scenario":"orders-new","latencyMs":5000}'
 finished_before=$(finished_runs)
 requests_before=$(mock_requests_for orders-new)
-docker compose restart worker > /dev/null 2>&1
+compose restart worker > /dev/null 2>&1
 # Kill only once this cycle's request has reached the mock. Only this cycle asks for orders-new,
 # and a cycle marks itself "running" before it calls the API, so from then on the marker is in
 # the database, however slow the machine.
 for _ in $(seq 1 "$RUN_TIMEOUT_SECONDS"); do [ "$(mock_requests_for orders-new)" -gt "$requests_before" ] && break; sleep 0.5; done
 [ "$(mock_requests_for orders-new)" -gt "$requests_before" ] || fail_with_logs "the worker never called the mock"
-docker compose kill worker > /dev/null 2>&1
+compose kill worker > /dev/null 2>&1
 sleep 2
 worker_running && fail_with_logs "the worker is still running after the kill"
 [ "$(finished_runs)" -eq "$finished_before" ] || fail_with_logs "the cycle finished before the worker was killed"
 
 mock '{"latencyMs":0}'
-docker compose start worker > /dev/null 2>&1
+compose start worker > /dev/null 2>&1
 summary=$(wait_for_run_after "$finished_before")
 grep -q "inserted 1," <<<"$summary" || fail_with_logs "cycle after the crash did not pick up the missed order: $summary"
 worker_log_has "did not finish normally" || fail_with_logs "the unfinished cycle was not reported"
@@ -171,5 +179,5 @@ pass "401: logged and emailed"
 
 # --- Reset -----------------------------------------------------------------
 reset_mock
-docker compose restart worker > /dev/null 2>&1
+compose restart worker > /dev/null 2>&1
 pass "mock API reset to its configured settings"

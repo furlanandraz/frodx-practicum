@@ -1,9 +1,10 @@
-# The production shape of the stack: just the worker. It reads its settings from .env
-# (on a server: the real order API and mail server).
+# The worker, the only service that runs in production. It reads its settings from .env
+# (on a server: the real order API and mail server). A server runs this file alone:
+#   docker compose up --build
 #
-# Locally and in CI, a plain `docker compose ...` also loads compose.override.yml automatically,
-# which adds the test-only services: the mock order API and Mailpit. On a server,
-# compose.deploy.yml is layered on top instead, so the mock never runs there.
+# Locally and in CI, compose.cicd.yml is added on top for the test-only services
+# (mock order API, Mailpit):
+#   docker compose -f compose.yml -f compose.cicd.yml up --build
 #
 # No settings live here. Each app's defaults are in its appsettings.json; .env overrides them.
 # The worker publishes no ports: it only calls out (API, SMTP) and writes to its volumes.
