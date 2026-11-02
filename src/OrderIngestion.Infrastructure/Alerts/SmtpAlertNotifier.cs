@@ -7,9 +7,8 @@ using SmtpClient = MailKit.Net.Smtp.SmtpClient;
 namespace OrderIngestion.Infrastructure.Alerts;
 
 /// <summary>
-/// Sends alerts as plain-text email via SMTP (MailKit; Microsoft recommends it over the
-/// built-in System.Net.Mail.SmtpClient). Locally this is Mailpit, which needs no credentials.
-/// Throws on failure; the caller decides what a failed alert means.
+/// Sends alerts as plain-text email with MailKit, which Microsoft recommends over the built-in
+/// System.Net.Mail.SmtpClient. Throws on failure; the caller decides what a failed alert means.
 /// </summary>
 internal sealed class SmtpAlertNotifier(IOptions<AlertOptions> options) : IAlertNotifier
 {
@@ -29,7 +28,6 @@ internal sealed class SmtpAlertNotifier(IOptions<AlertOptions> options) : IAlert
 
         using var client = new SmtpClient { Timeout = 10_000 };
 
-        // Auto: TLS on port 465, STARTTLS when the server offers it, plain otherwise (Mailpit).
         await client.ConnectAsync(settings.SmtpHost, settings.SmtpPort, SecureSocketOptions.Auto, cancellationToken);
         if (!string.IsNullOrEmpty(settings.SmtpUsername))
         {

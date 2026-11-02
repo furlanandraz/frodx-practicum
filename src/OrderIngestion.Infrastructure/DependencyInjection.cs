@@ -12,7 +12,6 @@ namespace OrderIngestion.Infrastructure;
 
 public static class DependencyInjection
 {
-    /// <summary>Registers every Infrastructure adapter. Called once from the host's Program.cs.</summary>
     public static IServiceCollection AddInfrastructure(this IServiceCollection services, IConfiguration configuration)
     {
         services.AddOptions<OrderApiOptions>()
@@ -33,7 +32,6 @@ public static class DependencyInjection
                 "With Alerts:Enabled, Alerts:SmtpHost must be set and Alerts:From / Alerts:To must be valid email addresses.")
             .ValidateOnStart();
 
-        // Typed HttpClient: the factory manages connection pooling and DNS refresh.
         services.AddHttpClient<IOrderSource, HttpOrderSource>((serviceProvider, client) =>
         {
             var options = serviceProvider.GetRequiredService<IOptions<OrderApiOptions>>().Value;

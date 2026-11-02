@@ -51,7 +51,7 @@ public sealed class OrderIngestionServiceTests
         _source.Next = () => [Sample.Order("ORD-2", createdAt: "2026-10-29T11:00:00Z")];
         var second = await Service.RunAsync(Guid.NewGuid(), CancellationToken.None);
 
-        Assert.Equal(Sample.At("2026-10-29T10:00:00Z"), _source.SinceRequests[1]); // youngest (11:00) − 60 min
+        Assert.Equal(Sample.At("2026-10-29T10:00:00Z"), _source.SinceRequests[1]);
         Assert.Equal(0, second.Inserted);
         Assert.Equal(1, second.Duplicates);
     }
@@ -83,7 +83,7 @@ public sealed class OrderIngestionServiceTests
     }
 
     [Theory]
-    [InlineData("0001-01-01T00:00:00Z")] // DateTimeOffset.MinValue: subtracting the overlap would throw
+    [InlineData("0001-01-01T00:00:00Z")]
     [InlineData("2025-06-01T12:00:00Z")]
     public async Task Cursor_never_reads_from_before_2026(string youngest)
     {
@@ -125,7 +125,6 @@ public sealed class OrderIngestionServiceTests
     [Fact]
     public async Task Cycle_left_running_by_a_crash_is_reported_and_its_window_fetched_again()
     {
-        // What the database looks like after the process died mid-cycle.
         var crashedRunStartedAt = Sample.At("2026-10-29T11:45:00Z");
         _store.Cursor = new IngestionCursor(crashedRunStartedAt, RunStatus.Running, Sample.At("2026-10-29T11:00:00Z"));
         _source.Next = () => [Sample.Order("ORD-NEW", createdAt: "2026-10-29T11:30:00Z")];
@@ -133,7 +132,7 @@ public sealed class OrderIngestionServiceTests
         var result = await Service.RunAsync(Guid.NewGuid(), CancellationToken.None);
 
         Assert.Equal(crashedRunStartedAt, result.UnfinishedRunStartedAt);
-        Assert.Equal(Sample.At("2026-10-29T10:00:00Z"), Assert.Single(_source.SinceRequests)); // same window as before
+        Assert.Equal(Sample.At("2026-10-29T10:00:00Z"), Assert.Single(_source.SinceRequests));
         Assert.Equal(1, result.Inserted);
         Assert.Equal(RunStatus.Succeeded, _store.Cursor.LastRunStatus);
     }
@@ -162,7 +161,7 @@ public sealed class OrderIngestionServiceTests
         await Assert.ThrowsAsync<OrderSourceException>(() => Service.RunAsync(Guid.NewGuid(), CancellationToken.None));
 
         Assert.Equal(new IngestionCursor(_time.GetUtcNow(), RunStatus.Failed, position), _store.Cursor);
-        Assert.Null(_store.LastBatchTimestamp); // no batch was saved
+        Assert.Null(_store.LastBatchTimestamp);
     }
 
     [Fact]

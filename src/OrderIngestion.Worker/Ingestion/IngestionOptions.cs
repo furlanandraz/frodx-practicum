@@ -3,7 +3,6 @@ using OrderIngestion.Domain.Ingestion;
 
 namespace OrderIngestion.Worker.Ingestion;
 
-/// <summary>Bound from the "Ingestion" config section. Checked at startup.</summary>
 public sealed class IngestionOptions
 {
     public const string SectionName = "Ingestion";
@@ -13,9 +12,8 @@ public sealed class IngestionOptions
     public int IntervalMinutes { get; init; }
 
     /// <summary>
-    /// Seconds before the cursor each fetch starts again, to catch orders the upstream makes visible
-    /// slightly late. 0 re-reads only the newest stored order(s); anything re-read is skipped by the hash.
-    /// A placeholder default: in production it follows the upstream's worst-case visibility delay.
+    /// How far before the cursor each fetch starts, to catch orders the upstream shows late; re-reads
+    /// are dropped by the hash. A placeholder: in production, the upstream's worst-case delay.
     /// </summary>
     [Range(0, 604_800)]
     public int CursorOverlapSeconds { get; init; }

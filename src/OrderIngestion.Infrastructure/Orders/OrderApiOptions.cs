@@ -2,10 +2,6 @@ using System.ComponentModel.DataAnnotations;
 
 namespace OrderIngestion.Infrastructure.Orders;
 
-/// <summary>
-/// Bound from the "OrderApi" config section. Values come from appsettings.json (the only place
-/// defaults live) and can be overridden by environment variables. Checked at startup.
-/// </summary>
 public sealed class OrderApiOptions
 {
     public const string SectionName = "OrderApi";

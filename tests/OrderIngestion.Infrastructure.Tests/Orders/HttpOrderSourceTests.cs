@@ -38,7 +38,7 @@ public sealed class HttpOrderSourceTests
             () => CreateSource(handler).FetchOrdersAsync(since: null, CancellationToken.None));
 
         Assert.Equal(expected, ex.Failure);
-        Assert.Equal(1, handler.Calls); // no retries within a cycle
+        Assert.Equal(1, handler.Calls);
     }
 
     [Fact]
@@ -56,7 +56,6 @@ public sealed class HttpOrderSourceTests
     [Fact]
     public async Task Timeout_is_other_and_not_retried()
     {
-        // Hangs past the 1 s timeout configured below.
         var handler = new StubHandler(async ct =>
         {
             await Task.Delay(TimeSpan.FromSeconds(10), ct);

@@ -4,7 +4,6 @@ using Microsoft.Extensions.Options;
 
 namespace OrderIngestion.Infrastructure.Persistence;
 
-/// <summary>Opens connections to the SQLite file and creates the schema.</summary>
 internal sealed class SqliteDatabase(IOptions<DatabaseOptions> options)
 {
     private readonly string _filePath = options.Value.FilePath;
@@ -12,8 +11,7 @@ internal sealed class SqliteDatabase(IOptions<DatabaseOptions> options)
     private readonly string _connectionString = new SqliteConnectionStringBuilder
     {
         DataSource = options.Value.FilePath,
-        ForeignKeys = true,   // SQLite ignores REFERENCES unless this is on
-        DefaultTimeout = 30,  // seconds to wait for a lock before failing
+        DefaultTimeout = 30,
     }.ToString();
 
     public async Task<SqliteConnection> OpenAsync(CancellationToken cancellationToken)
@@ -33,7 +31,6 @@ internal sealed class SqliteDatabase(IOptions<DatabaseOptions> options)
 
         await using var connection = await OpenAsync(cancellationToken);
 
-        // Write-ahead logging: readers (e.g. a future health check) don't block the writer.
         await connection.ExecuteAsync("PRAGMA journal_mode = WAL;");
         await connection.ExecuteAsync(SqliteSchema.Sql);
     }

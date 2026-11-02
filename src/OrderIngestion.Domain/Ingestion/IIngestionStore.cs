@@ -2,7 +2,6 @@ using OrderIngestion.Domain.Orders;
 
 namespace OrderIngestion.Domain.Ingestion;
 
-/// <summary>Persistence for synced orders and the cursor.</summary>
 public interface IIngestionStore
 {
     /// <summary>The cursor, or <see cref="IngestionCursor.Empty"/> before the first cycle.</summary>

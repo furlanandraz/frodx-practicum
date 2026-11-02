@@ -40,7 +40,6 @@ public sealed class AlertThrottleTests
     [Fact]
     public void Unsent_alert_is_not_throttled()
     {
-        // A failed send never calls MarkSent, so the next run tries to email again.
         var throttle = new AlertThrottle(_time, TimeSpan.FromMinutes(60));
         _ = throttle.IsThrottled("run-failed");
 

@@ -6,14 +6,9 @@ using OrderIngestion.Domain.Orders;
 
 namespace OrderIngestion.Infrastructure.Persistence;
 
-/// <summary>
-/// <see cref="IIngestionStore"/> on SQLite, with Dapper mapping parameters and rows.
-/// All SQL is written out here; there is no ORM generating queries.
-/// </summary>
+/// <summary>All SQL is written out here; Dapper only maps parameters and rows.</summary>
 internal sealed class SqliteIngestionStore(SqliteDatabase database) : IIngestionStore
 {
-    // ON CONFLICT DO NOTHING: an order already stored is skipped (0 rows affected),
-    // which is how duplicates are counted.
     private const string InsertSyncSql = """
         INSERT INTO sync (canonical_hash, timestamp, payload)
         VALUES (@CanonicalHash, @Timestamp, @Payload)
@@ -57,7 +52,6 @@ internal sealed class SqliteIngestionStore(SqliteDatabase database) : IIngestion
 
         var timestamp = Timestamp(batchTimestamp);
 
-        // Dapper runs the statement once per item and adds up the affected rows.
         var inserted = await connection.ExecuteAsync(new CommandDefinition(
             InsertSyncSql,
             orders.Select(order => new { order.CanonicalHash, Timestamp = timestamp, order.Payload }),
