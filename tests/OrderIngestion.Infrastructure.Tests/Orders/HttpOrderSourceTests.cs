@@ -4,9 +4,8 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using OrderIngestion.Domain.Orders;
 using OrderIngestion.Infrastructure;
-using OrderIngestion.Tests.TestSupport;
 
-namespace OrderIngestion.Tests.Orders;
+namespace OrderIngestion.Infrastructure.Tests.Orders;
 
 /// <summary>
 /// Runs the real HttpClient registration against a stub handler: one attempt per cycle,

@@ -1,7 +1,7 @@
 using Microsoft.Extensions.Time.Testing;
 using OrderIngestion.Domain.Alerts;
 
-namespace OrderIngestion.Tests.Alerts;
+namespace OrderIngestion.Domain.Tests.Alerts;
 
 public sealed class AlertThrottleTests
 {

@@ -1,8 +1,7 @@
 using OrderIngestion.Domain.Orders;
 using OrderIngestion.Infrastructure.Orders;
-using OrderIngestion.Tests.TestSupport;
 
-namespace OrderIngestion.Tests.Orders;
+namespace OrderIngestion.Infrastructure.Tests.Orders;
 
 /// <summary>
 /// Shape problems make the whole response schema drift. Value problems skip only that order.

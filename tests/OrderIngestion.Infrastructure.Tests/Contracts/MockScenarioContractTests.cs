@@ -1,8 +1,7 @@
 using OrderIngestion.Domain.Orders;
 using OrderIngestion.Infrastructure.Orders;
-using OrderIngestion.Tests.TestSupport;
 
-namespace OrderIngestion.Tests.Contracts;
+namespace OrderIngestion.Infrastructure.Tests.Contracts;
 
 /// <summary>
 /// Reads the exact files the mock API serves, through the worker's real reader, so the

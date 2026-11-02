@@ -4,9 +4,8 @@ using Microsoft.Extensions.Options;
 using OrderIngestion.Domain.Ingestion;
 using OrderIngestion.Domain.Orders;
 using OrderIngestion.Infrastructure.Persistence;
-using OrderIngestion.Tests.TestSupport;
 
-namespace OrderIngestion.Tests.Persistence;
+namespace OrderIngestion.Infrastructure.Tests.Persistence;
 
 /// <summary>Against a real SQLite file, so the SQL itself (unique index, ON CONFLICT, CHECKs) is tested.</summary>
 public sealed class SqliteIngestionStoreTests : IAsyncLifetime

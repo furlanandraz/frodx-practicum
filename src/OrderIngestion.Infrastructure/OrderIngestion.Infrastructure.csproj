@@ -15,7 +15,7 @@
 
   <ItemGroup>
     <!-- DTOs and mappers are internal; tests still need to reach them. -->
-    <InternalsVisibleTo Include="OrderIngestion.Tests" />
+    <InternalsVisibleTo Include="OrderIngestion.Infrastructure.Tests" />
   </ItemGroup>
 
 </Project>

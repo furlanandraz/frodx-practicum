@@ -8,6 +8,7 @@
     <Project Path="src/OrderIngestion.Worker/OrderIngestion.Worker.csproj" />
   </Folder>
   <Folder Name="/tests/">
-    <Project Path="tests/OrderIngestion.Tests/OrderIngestion.Tests.csproj" />
+    <Project Path="tests/OrderIngestion.Domain.Tests/OrderIngestion.Domain.Tests.csproj" />
+    <Project Path="tests/OrderIngestion.Infrastructure.Tests/OrderIngestion.Infrastructure.Tests.csproj" />
   </Folder>
 </Solution>

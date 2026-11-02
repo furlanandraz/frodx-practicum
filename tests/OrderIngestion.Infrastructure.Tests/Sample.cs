@@ -1,6 +1,6 @@
 using OrderIngestion.Domain.Orders;
 
-namespace OrderIngestion.Tests.TestSupport;
+namespace OrderIngestion.Infrastructure.Tests;
 
 internal static class Sample
 {

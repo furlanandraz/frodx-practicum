@@ -1,6 +1,6 @@
 using OrderIngestion.Domain.Orders;
 
-namespace OrderIngestion.Tests.Orders;
+namespace OrderIngestion.Domain.Tests.Orders;
 
 public sealed class OrderIdentityTests
 {

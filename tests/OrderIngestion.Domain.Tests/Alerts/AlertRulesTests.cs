@@ -1,7 +1,7 @@
 using OrderIngestion.Domain.Alerts;
 using OrderIngestion.Domain.Orders;
 
-namespace OrderIngestion.Tests.Alerts;
+namespace OrderIngestion.Domain.Tests.Alerts;
 
 /// <summary>Emails for exactly three failures: 404, 401 and schema drift.</summary>
 public sealed class AlertRulesTests

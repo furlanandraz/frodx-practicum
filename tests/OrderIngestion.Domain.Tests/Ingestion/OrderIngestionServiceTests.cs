@@ -1,9 +1,8 @@
 using Microsoft.Extensions.Time.Testing;
 using OrderIngestion.Domain.Ingestion;
 using OrderIngestion.Domain.Orders;
-using OrderIngestion.Tests.TestSupport;
 
-namespace OrderIngestion.Tests.Ingestion;
+namespace OrderIngestion.Domain.Tests.Ingestion;
 
 public sealed class OrderIngestionServiceTests
 {
