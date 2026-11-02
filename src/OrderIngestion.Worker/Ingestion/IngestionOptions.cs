@@ -13,13 +13,14 @@ public sealed class IngestionOptions
     public int IntervalMinutes { get; init; }
 
     /// <summary>
-    /// How far before the cursor each fetch starts again, to catch orders the upstream makes visible
+    /// Seconds before the cursor each fetch starts again, to catch orders the upstream makes visible
     /// slightly late. 0 re-reads only the newest stored order(s); anything re-read is skipped by the hash.
+    /// A placeholder default: in production it follows the upstream's worst-case visibility delay.
     /// </summary>
-    [Range(0, 10_080)]
-    public int CursorOverlapMinutes { get; init; }
+    [Range(0, 604_800)]
+    public int CursorOverlapSeconds { get; init; }
 
     public TimeSpan Interval => TimeSpan.FromMinutes(IntervalMinutes);
 
-    public IngestionSettings ToSettings() => new(TimeSpan.FromMinutes(CursorOverlapMinutes));
+    public IngestionSettings ToSettings() => new(TimeSpan.FromSeconds(CursorOverlapSeconds));
 }
