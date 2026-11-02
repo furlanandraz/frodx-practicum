@@ -11,7 +11,7 @@ namespace OrderIngestion.Infrastructure.Tests.Orders;
 /// Runs the real HttpClient registration against a stub handler: one attempt per cycle,
 /// and every failure sorted into the right kind.
 /// </summary>
-public sealed class HttpOrderSourceTests
+public sealed class OrderApiClientTests
 {
     [Fact]
     public async Task Ok_response_returns_the_orders()

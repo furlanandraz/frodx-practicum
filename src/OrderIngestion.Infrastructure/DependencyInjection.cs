@@ -32,7 +32,7 @@ public static class DependencyInjection
                 "With Alerts:Enabled, Alerts:SmtpHost must be set and Alerts:From / Alerts:To must be valid email addresses.")
             .ValidateOnStart();
 
-        services.AddHttpClient<IOrderSource, HttpOrderSource>((serviceProvider, client) =>
+        services.AddHttpClient<IOrderSource, OrderApiClient>((serviceProvider, client) =>
         {
             var options = serviceProvider.GetRequiredService<IOptions<OrderApiOptions>>().Value;
             client.BaseAddress = new Uri(options.BaseUrl);

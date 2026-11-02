@@ -13,7 +13,7 @@ namespace OrderIngestion.Infrastructure.Orders;
 /// A timeout throws <see cref="TaskCanceledException"/> while our own token is not cancelled;
 /// that is how it is told apart from shutdown.
 /// </remarks>
-internal sealed class HttpOrderSource(HttpClient httpClient, IOptions<OrderApiOptions> options) : IOrderSource
+internal sealed class OrderApiClient(HttpClient httpClient, IOptions<OrderApiOptions> options) : IOrderSource
 {
     public async Task<FetchedOrders> FetchOrdersAsync(DateTimeOffset? since, CancellationToken cancellationToken)
     {
